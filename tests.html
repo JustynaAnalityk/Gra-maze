@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Labirynt – testy</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #f4f1ea; color: #1f2a44; }
+    h1 { margin-top: 0; }
+    #summary { font-weight: 700; font-size: 1.2rem; margin-bottom: 1rem; }
+    .pass { color: #0e7f5f; }
+    .fail { color: #c0392b; }
+    li { margin: 0.2rem 0; }
+    pre { margin: 0.2rem 0 0.5rem 1.5rem; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Testy labiryntu</h1>
+  <div id="summary">Uruchamianie…</div>
+  <ul id="results"></ul>
+
+  <script src="js/maze.js"></script>
+  <script src="js/game.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      // Minimalny zestaw do testów – bez bibliotek.
+      var tests = [];
+      function test(name, fn) { tests.push({ name: name, fn: fn }); }
+      function assert(cond, msg) { if (!cond) throw new Error(msg || 'asercja nie przeszła'); }
+      function assertEqual(actual, expected, msg) {
+        if (actual !== expected) throw new Error((msg || 'różne wartości') + ': oczekiwano ' + expected + ', jest ' + actual);
+      }
+
+      var SEEDS = [];
+      for (var s = 1; s <= 40; s++) SEEDS.push(s * 7919);
+      var SIZES = Object.keys(DIFFICULTIES).map(function (k) { return DIFFICULTIES[k].size; });
+
+      function forEachMaze(fn) {
+        SIZES.forEach(function (size) {
+          SEEDS.forEach(function (seed) {
+            fn(Maze.generate(size, size, Maze.mulberry32(seed)), size, seed);
+          });
+        });
+      }
+
+      // Idzie po rozwiązaniu, zamieniając kolejne pola na kierunki ruchu.
+      function directionsFor(path) {
+        var dirs = [];
+        for (var i = 1; i < path.length; i++) {
+          var dx = path[i].x - path[i - 1].x, dy = path[i].y - path[i - 1].y;
+          dirs.push(dx === 1 ? 'right' : dx === -1 ? 'left' : dy === 1 ? 'down' : 'up');
+        }
+        return dirs;
+      }
+
+      // ---- Generator ----
+
+      test('Poziomy trudności mają rozmiary 10, 18 i 28', function () {
+        assertEqual(DIFFICULTIES.easy.size, 10);
+        assertEqual(DIFFICULTIES.medium.size, 18);
+        assertEqual(DIFFICULTIES.hard.size, 28);
+      });
+
+      test('Istnieje droga od startu (lewy górny) do mety (prawy dolny)', function () {
+        forEachMaze(function (maze, size, seed) {
+          var path = Maze.solve(maze, { x: 0, y: 0 }, { x: size - 1, y: size - 1 });
+          assert(path !== null, 'brak drogi, rozmiar ' + size + ', seed ' + seed);
+          assertEqual(path[0].x + ',' + path[0].y, '0,0', 'początek drogi');
+          assertEqual(path[path.length - 1].x + ',' + path[path.length - 1].y, (size - 1) + ',' + (size - 1), 'koniec drogi');
+        });
+      });
+
+      test('Kolejne pola drogi sąsiadują i nie przechodzą przez ściany', function () {
+        forEachMaze(function (maze, size) {
+          var path = Maze.solve(maze, { x: 0, y: 0 }, { x: size - 1, y: size - 1 });
+          var dirs = directionsFor(path);
+          for (var i = 0; i < dirs.length; i++) {
+            var dist = Math.abs(path[i + 1].x - path[i].x) + Math.abs(path[i + 1].y - path[i].y);
+            assertEqual(dist, 1, 'odległość między polami drogi');
+            assert(Maze.canMove(maze, path[i].x, path[i].y, dirs[i]), 'droga przechodzi przez ścianę');
+          }
+        });
+      });
+
+      test('Każde pole jest osiągalne ze startu', function () {
+        forEachMaze(function (maze, size, seed) {
+          assertEqual(Maze.reachableCount(maze, { x: 0, y: 0 }), size * size, 'osiągalne pola, seed ' + seed);
+        });
+      });
+
+      test('Liczba przejść wynosi N−1 (labirynt idealny, bez pętli)', function () {
+        forEachMaze(function (maze, size, seed) {
+          assertEqual(Maze.countPassages(maze), size * size - 1, 'przejścia, seed ' + seed);
+        });
+      });
+
+      test('Ściany są spójne po obu stronach', function () {
+        forEachMaze(function (maze, size) {
+          for (var y = 0; y < size; y++) {
+            for (var x = 0; x < size; x++) {
+              if (x + 1 < size) assertEqual(Maze.hasWall(maze, x, y, 'right'), Maze.hasWall(maze, x + 1, y, 'left'), 'ściana pionowa');
+              if (y + 1 < size) assertEqual(Maze.hasWall(maze, x, y, 'down'), Maze.hasWall(maze, x, y + 1, 'up'), 'ściana pozioma');
+            }
+          }
+        });
+      });
+
+      test('Obwód planszy jest zamknięty', function () {
+        forEachMaze(function (maze, size) {
+          for (var i = 0; i < size; i++) {
+            assert(Maze.hasWall(maze, i, 0, 'up') && Maze.hasWall(maze, i, size - 1, 'down'), 'dziura w górnej/dolnej krawędzi');
+            assert(Maze.hasWall(maze, 0, i, 'left') && Maze.hasWall(maze, size - 1, i, 'right'), 'dziura w lewej/prawej krawędzi');
+          }
+        });
+      });
+
+      test('Generator bez ziarna (Math.random) też daje poprawny labirynt', function () {
+        for (var i = 0; i < 20; i++) {
+          var maze = Maze.generate(28, 28);
+          assertEqual(Maze.countPassages(maze), 28 * 28 - 1);
+          assertEqual(Maze.reachableCount(maze, { x: 0, y: 0 }), 28 * 28);
+        }
+      });
+
+      // ---- Gra ----
+
+      test('Gracz nie przechodzi przez ściany, a uderzenie nie liczy się jako ruch', function () {
+        var game = new Game('medium', Maze.mulberry32(42));
+        // Z lewego górnego rogu nie da się wyjść w górę ani w lewo.
+        assertEqual(game.move('up', 0), 'blocked');
+        assertEqual(game.move('left', 0), 'blocked');
+        // Szukamy ściany wewnątrz planszy i próbujemy w nią wejść.
+        var blocked = null;
+        ['right', 'down'].forEach(function (d) { if (!blocked && !Maze.canMove(game.maze, 0, 0, d)) blocked = d; });
+        if (blocked) assertEqual(game.move(blocked, 0), 'blocked');
+        assertEqual(game.player.x + ',' + game.player.y, '0,0', 'pozycja po uderzeniu');
+        assertEqual(game.moves, 0, 'ruchy po uderzeniu');
+        assertEqual(game.startTime, null, 'czas nie startuje od uderzenia w ścianę');
+      });
+
+      test('Każdy krok w grze zgadza się z mapą ścian', function () {
+        var game = new Game('easy', Maze.mulberry32(7));
+        var rng = Maze.mulberry32(99);
+        for (var i = 0; i < 500 && game.status === 'playing'; i++) {
+          var dir = Maze.DIR_NAMES[Math.floor(rng() * 4)];
+          var before = { x: game.player.x, y: game.player.y };
+          var allowed = Maze.canMove(game.maze, before.x, before.y, dir);
+          var result = game.move(dir, i);
+          if (allowed) assert(result === 'moved' || result === 'won', 'ruch dozwolony, a wynik: ' + result);
+          else assertEqual(result, 'blocked', 'ruch przez ścianę');
+          assert(Maze.inBounds(game.maze, game.player.x, game.player.y), 'gracz poza planszą');
+        }
+      });
+
+      test('Wygrana wykrywa się na mecie, a potem ruchy są ignorowane', function () {
+        ['easy', 'medium', 'hard'].forEach(function (diff) {
+          var game = new Game(diff, Maze.mulberry32(123));
+          var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal));
+          var t = 1000;
+          for (var i = 0; i < dirs.length; i++) {
+            var r = game.move(dirs[i], t += 100);
+            assertEqual(r, i === dirs.length - 1 ? 'won' : 'moved', 'krok ' + i);
+          }
+          assertEqual(game.status, 'won');
+          assertEqual(game.moves, dirs.length, 'liczba ruchów');
+          assertEqual(game.elapsed(), (dirs.length - 1) * 100, 'czas od pierwszego ruchu do mety');
+          assertEqual(game.move('left', t + 100), 'ignored');
+        });
+      });
+
+      test('Ślad zapisuje przebytą drogę', function () {
+        var game = new Game('easy', Maze.mulberry32(5));
+        var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal)).slice(0, 4);
+        dirs.forEach(function (d, i) { game.move(d, i); });
+        assertEqual(game.trail.length, 5);
+        var last = game.trail[game.trail.length - 1];
+        assertEqual(last.x + ',' + last.y, game.player.x + ',' + game.player.y);
+      });
+
+      test('Podpowiedź: 5 pól właściwej drogi, 2 sekundy, maksymalnie 3 razy', function () {
+        var game = new Game('hard', Maze.mulberry32(11));
+        var path = Maze.solve(game.maze, game.start, game.goal);
+        assert(game.useHint(0), 'pierwsza podpowiedź');
+        assertEqual(game.hintCells.length, 5);
+        for (var i = 0; i < 5; i++) {
+          assertEqual(game.hintCells[i].x + ',' + game.hintCells[i].y, path[i + 1].x + ',' + path[i + 1].y, 'pole podpowiedzi ' + i);
+        }
+        assert(game.hintVisible(1999), 'widoczna przed upływem 2 s');
+        assert(!game.hintVisible(2000), 'znika po 2 s');
+        assert(game.useHint(0) && game.useHint(0), 'druga i trzecia podpowiedź');
+        assertEqual(game.hintsLeft, 0);
+        assert(!game.useHint(0), 'czwarta podpowiedź nie jest dostępna');
+      });
+
+      test('Podpowiedź przy mecie jest krótsza niż 5 pól', function () {
+        var game = new Game('easy', Maze.mulberry32(3));
+        var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal));
+        for (var i = 0; i < dirs.length - 2; i++) game.move(dirs[i], i);
+        game.useHint(0);
+        assertEqual(game.hintCells.length, 2);
+      });
+
+      test('Poddanie się pokazuje całą drogę i kończy grę', function () {
+        var game = new Game('medium', Maze.mulberry32(8));
+        game.move(Maze.canMove(game.maze, 0, 0, 'right') ? 'right' : 'down', 0);
+        assert(game.giveUp(500));
+        assertEqual(game.status, 'gaveup');
+        var sol = game.solution;
+        assertEqual(sol[0].x + ',' + sol[0].y, '0,0');
+        assertEqual(sol[sol.length - 1].x + ',' + sol[sol.length - 1].y, '17,17');
+        assertEqual(game.move('right', 600), 'ignored');
+        assert(!game.useHint(600), 'po poddaniu nie ma podpowiedzi');
+      });
+
+      test('Formatowanie czasu', function () {
+        assertEqual(formatTime(0), '0:00.0');
+        assertEqual(formatTime(9999), '0:09.9');
+        assertEqual(formatTime(75300), '1:15.3');
+      });
+
+      // ---- Uruchomienie ----
+
+      var list = document.getElementById('results');
+      var failed = 0;
+      tests.forEach(function (t) {
+        var li = document.createElement('li');
+        try {
+          t.fn();
+          li.className = 'pass';
+          li.textContent = '✔ ' + t.name;
+        } catch (e) {
+          failed++;
+          li.className = 'fail';
+          li.textContent = '✘ ' + t.name;
+          var pre = document.createElement('pre');
+          pre.textContent = e.message;
+          li.appendChild(pre);
+        }
+        list.appendChild(li);
+      });
+      var summary = document.getElementById('summary');
+      summary.className = failed ? 'fail' : 'pass';
+      summary.textContent = failed
+        ? 'Nie przeszło: ' + failed + ' z ' + tests.length
+        : 'Wszystkie testy przeszły (' + tests.length + ')';
+      document.title = (failed ? 'FAIL' : 'OK') + ' – testy labiryntu';
+    })();
+  </script>
+</body>
+</html>

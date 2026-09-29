@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Labirynt</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <!-- Menu startowe -->
+    <section id="menu" class="screen menu">
+      <div class="menu-card">
+        <div class="title-row">
+          <h1>Labirynt</h1>
+          <span class="badge-18" title="Gra dla osób pełnoletnich">18+</span>
+        </div>
+        <p class="howto">
+          Doprowadź kółko do złotej gwiazdki. Steruj strzałkami lub <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>,
+          na telefonie przesuwaj palcem po planszy.
+          <kbd>H</kbd> – podpowiedź, <kbd>R</kbd> – nowy labirynt, <kbd>M</kbd> – dźwięk.
+        </p>
+        <div class="levels">
+          <button class="level" data-difficulty="easy">
+            <span class="level-name">Łatwy</span>
+            <span class="level-size">10×10</span>
+            <span class="level-best" data-best="easy"></span>
+          </button>
+          <button class="level" data-difficulty="medium">
+            <span class="level-name">Średni</span>
+            <span class="level-size">18×18</span>
+            <span class="level-best" data-best="medium"></span>
+          </button>
+          <button class="level" data-difficulty="hard">
+            <span class="level-name">Trudny</span>
+            <span class="level-size">28×28</span>
+            <span class="level-best" data-best="hard"></span>
+          </button>
+        </div>
+        <p class="note">Gra przeznaczona wyłącznie dla osób pełnoletnich.</p>
+      </div>
+    </section>
+
+    <!-- Ekran gry -->
+    <section id="game" class="screen game" hidden>
+      <header class="hud">
+        <div class="stats">
+          <span id="hud-level" class="hud-level"></span>
+          <span class="stat">Czas <b id="hud-time">0:00.0</b></span>
+          <span class="stat">Ruchy <b id="hud-moves">0</b></span>
+        </div>
+        <div class="actions">
+          <button id="btn-hint" title="Podpowiedź (H)">Podpowiedź <span class="count" id="hint-count">3</span></button>
+          <button id="btn-restart" title="Nowy labirynt (R)">Nowy</button>
+          <button id="btn-giveup" title="Pokaż rozwiązanie">Poddaję się</button>
+          <button id="btn-mute" class="icon" aria-label="Wycisz dźwięk">🔊</button>
+          <button id="btn-menu" title="Menu (Esc)">Menu</button>
+        </div>
+      </header>
+
+      <!-- Pasek po poddaniu się: w układzie strony, żeby nie zasłaniał rozwiązania. -->
+      <div id="endbar" class="endbar" hidden>
+        <p><b>Oto droga do mety.</b> Wynik nie został zapisany.</p>
+        <div class="panel-actions">
+          <button id="end-next" class="primary">Następny labirynt</button>
+          <button id="end-menu">Menu</button>
+        </div>
+      </div>
+
+      <div id="board-wrap" class="board-wrap">
+        <canvas id="board" aria-label="Plansza labiryntu"></canvas>
+      </div>
+
+      <div id="overlay" class="overlay" hidden>
+        <div class="panel" role="dialog" aria-labelledby="ov-title">
+          <h2 id="ov-title">Brawo!</h2>
+          <p id="ov-record" class="record" hidden>Nowy rekord!</p>
+          <dl class="results">
+            <div><dt>Czas</dt><dd id="ov-time"></dd></div>
+            <div><dt>Ruchy</dt><dd id="ov-moves"></dd></div>
+            <div><dt>Najlepszy czas</dt><dd id="ov-best"></dd></div>
+          </dl>
+          <div class="panel-actions">
+            <button id="ov-next" class="primary">Następny labirynt</button>
+            <button id="ov-menu">Menu</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Zwykłe skrypty (bez modułów ES), żeby gra działała po otwarciu pliku dwuklikiem. -->
+  <script src="js/maze.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
