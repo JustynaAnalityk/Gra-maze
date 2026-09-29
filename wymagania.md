@@ -21,9 +21,12 @@ Jak wypełniać:
 
 **1.1** Dla kogo jest gra?
 - [ ] dzieci (ok. ___ lat)
-- [x] dorośli / wszyscy
+- [x] tylko dorośli (18+)
+- [ ] wszyscy
 - [ ] dla mnie – nauka programowania w JS
 - [ ] inne: ___
+
+**Odpowiedź:** Gra jest przeznaczona wyłącznie dla osób pełnoletnich. W menu startowym widać oznaczenie „18+”.
 
 **1.2** Gdzie gra będzie uruchamiana?
 - [x] lokalnie – dwuklik na plik `index.html`
