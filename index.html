@@ -5,40 +5,66 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <title>Labirynt</title>
+  <!-- Czcionki są opcjonalne: bez internetu gra użyje czcionek systemowych. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..800;1,9..144,400..700&family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@500;700&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Ikony używane w przyciskach -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-hint" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z"/></symbol>
+    <symbol id="i-new" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zM17 9l5 6M22 9l-5 6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  </svg>
+
   <main id="app">
     <!-- Menu startowe -->
     <section id="menu" class="screen menu">
-      <div class="menu-card">
-        <div class="title-row">
-          <h1>Labirynt</h1>
-          <span class="badge-18" title="Gra dla osób pełnoletnich">18+</span>
+      <div class="menu-layout">
+        <div class="menu-card">
+          <p class="kicker"><span>Zeszyt zagadek</span><span class="badge-18" title="Gra dla osób pełnoletnich">18+</span></p>
+          <h1>Labi<em>rynt</em></h1>
+          <p class="howto">
+            Doprowadź kółko do złotej gwiazdki. Steruj strzałkami lub <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>,
+            na telefonie przesuwaj palcem po planszy.
+            <kbd>H</kbd> podpowiedź, <kbd>R</kbd> nowy labirynt, <kbd>M</kbd> dźwięk.
+          </p>
+          <div class="levels">
+            <button class="level" data-difficulty="easy" style="--grid: 10">
+              <span class="level-no">01</span>
+              <span class="level-name">Łatwy</span>
+              <span class="level-size">10×10</span>
+              <span class="level-best" data-best="easy"></span>
+              <span class="level-art" aria-hidden="true"></span>
+            </button>
+            <button class="level" data-difficulty="medium" style="--grid: 18">
+              <span class="level-no">02</span>
+              <span class="level-name">Średni</span>
+              <span class="level-size">18×18</span>
+              <span class="level-best" data-best="medium"></span>
+              <span class="level-art" aria-hidden="true"></span>
+            </button>
+            <button class="level" data-difficulty="hard" style="--grid: 28">
+              <span class="level-no">03</span>
+              <span class="level-name">Trudny</span>
+              <span class="level-size">28×28</span>
+              <span class="level-best" data-best="hard"></span>
+              <span class="level-art" aria-hidden="true"></span>
+            </button>
+          </div>
+          <p class="note">Gra przeznaczona wyłącznie dla osób pełnoletnich.</p>
         </div>
-        <p class="howto">
-          Doprowadź kółko do złotej gwiazdki. Steruj strzałkami lub <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>,
-          na telefonie przesuwaj palcem po planszy.
-          <kbd>H</kbd> – podpowiedź, <kbd>R</kbd> – nowy labirynt, <kbd>M</kbd> – dźwięk.
-        </p>
-        <div class="levels">
-          <button class="level" data-difficulty="easy">
-            <span class="level-name">Łatwy</span>
-            <span class="level-size">10×10</span>
-            <span class="level-best" data-best="easy"></span>
-          </button>
-          <button class="level" data-difficulty="medium">
-            <span class="level-name">Średni</span>
-            <span class="level-size">18×18</span>
-            <span class="level-best" data-best="medium"></span>
-          </button>
-          <button class="level" data-difficulty="hard">
-            <span class="level-name">Trudny</span>
-            <span class="level-size">28×28</span>
-            <span class="level-best" data-best="hard"></span>
-          </button>
-        </div>
-        <p class="note">Gra przeznaczona wyłącznie dla osób pełnoletnich.</p>
+
+        <!-- Podgląd: labirynt, który sam się rozwiązuje -->
+        <figure class="preview" aria-hidden="true">
+          <canvas id="preview"></canvas>
+          <figcaption>Każdy labirynt jest nowy. Dokładnie jedna droga do mety.</figcaption>
+        </figure>
       </div>
     </section>
 
@@ -47,15 +73,15 @@
       <header class="hud">
         <div class="stats">
           <span id="hud-level" class="hud-level"></span>
-          <span class="stat">Czas <b id="hud-time">0:00.0</b></span>
-          <span class="stat">Ruchy <b id="hud-moves">0</b></span>
+          <span class="stat"><span class="stat-label">Czas</span> <b id="hud-time">0:00.0</b></span>
+          <span class="stat"><span class="stat-label">Ruchy</span> <b id="hud-moves">0</b></span>
         </div>
         <div class="actions">
-          <button id="btn-hint" title="Podpowiedź (H)">Podpowiedź <span class="count" id="hint-count">3</span></button>
-          <button id="btn-restart" title="Nowy labirynt (R)">Nowy</button>
-          <button id="btn-giveup" title="Pokaż rozwiązanie">Poddaję się</button>
-          <button id="btn-mute" class="icon" aria-label="Wycisz dźwięk">🔊</button>
-          <button id="btn-menu" title="Menu (Esc)">Menu</button>
+          <button id="btn-hint" title="Podpowiedź (H)"><svg class="ic"><use href="#i-hint"/></svg><span class="lbl">Podpowiedź</span> <span class="count" id="hint-count">3</span></button>
+          <button id="btn-restart" title="Nowy labirynt (R)"><svg class="ic"><use href="#i-new"/></svg><span class="lbl">Nowy</span></button>
+          <button id="btn-giveup" title="Pokaż rozwiązanie"><svg class="ic"><use href="#i-flag"/></svg><span class="lbl">Poddaję się</span></button>
+          <button id="btn-mute" class="icon" aria-label="Wycisz dźwięk" aria-pressed="false"><svg class="ic on"><use href="#i-sound"/></svg><svg class="ic off"><use href="#i-mute"/></svg></button>
+          <button id="btn-menu" class="icon" title="Menu (Esc)" aria-label="Menu"><svg class="ic"><use href="#i-menu"/></svg></button>
         </div>
       </header>
 
@@ -74,10 +100,11 @@
 
       <div id="overlay" class="overlay" hidden>
         <div class="panel" role="dialog" aria-labelledby="ov-title">
+          <p class="panel-kicker">Meta osiągnięta</p>
           <h2 id="ov-title">Brawo!</h2>
-          <p id="ov-record" class="record" hidden>Nowy rekord!</p>
+          <p id="ov-record" class="record" hidden>★ Nowy rekord</p>
+          <p class="big-time" id="ov-time"></p>
           <dl class="results">
-            <div><dt>Czas</dt><dd id="ov-time"></dd></div>
             <div><dt>Ruchy</dt><dd id="ov-moves"></dd></div>
             <div><dt>Najlepszy czas</dt><dd id="ov-best"></dd></div>
           </dl>
@@ -96,6 +123,7 @@
   <script src="js/storage.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/preview.js"></script>
   <script src="js/input.js"></script>
   <script src="js/main.js"></script>
 </body>

@@ -33,6 +33,7 @@
   };
 
   var renderer = new Renderer(el.canvas);
+  var preview = new MenuPreview($('preview'));
   var game = null;
   var difficulty = 'easy';
   var rafId = null;
@@ -52,6 +53,7 @@
     }
     el.game.hidden = true;
     el.menu.hidden = false;
+    preview.start();
     var first = el.menu.querySelector('.level');
     if (first) first.focus();
   }
@@ -62,6 +64,7 @@
     game = new Game(diff);
     renderer.reset(game);
     hideOverlay();
+    preview.stop();
     el.menu.hidden = true;
     el.game.hidden = false;
     el.level.textContent = DIFFICULTIES[diff].label + ' · ' + game.size + '×' + game.size;
@@ -165,7 +168,7 @@
 
   function renderMute() {
     var muted = Sound.isMuted();
-    el.mute.textContent = muted ? '🔇' : '🔊';
+    el.mute.setAttribute('aria-pressed', muted ? 'true' : 'false');
     el.mute.setAttribute('aria-label', muted ? 'Włącz dźwięk' : 'Wycisz dźwięk');
     el.mute.title = muted ? 'Włącz dźwięk (M)' : 'Wycisz dźwięk (M)';
   }
