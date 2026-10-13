@@ -31,3 +31,16 @@ W **Project Settings → API** (lub **Data API**) skopiuj:
 
 Oba są bezpieczne do umieszczenia w kodzie strony, bo dostępu pilnują zasady RLS z kroku 3.
 **Nigdy nie wklejaj do gry klucza `service_role` / secret.** Omija on wszystkie zabezpieczenia.
+
+## 5. Konta graczy (migracja 2)
+
+Wszystko poniżej robi narzędzie `tools/supabase-admin.mjs` (zob. `docs/superpowers/plans/2026-10-13-konta-uzytkownikow.md`, Zadanie 5).
+Ręcznie w panelu:
+
+1. **SQL Editor** – uruchom `migrations/20261013150000_profiles.sql`.
+2. **Authentication → Sign In / Providers** – wyłącz **Allow anonymous sign-ins**, wyłącz **Confirm email**, minimalna długość hasła 8.
+3. **Authentication → URL Configuration** – Site URL i Redirect URLs: `https://justynaanalityk.github.io/Gra-maze/`.
+4. **Edge Functions** – wdróż `functions/login/index.ts` jako funkcję `login` z wyłączonym **Verify JWT**.
+
+Konta testowe z narzędzi mają adresy `e2e.…@mailinator.com` (Supabase odrzuca `@example.com`). Usuwanie:
+`node tools/supabase-admin.mjs query "delete from auth.users where email like 'e2e.%@mailinator.com'" logout`
