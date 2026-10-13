@@ -1,5 +1,7 @@
 # Zapis wyników i wznawianie gry – projekt
 
+> **Zastąpione w części:** gracze anonimowi zostali zastąpieni kontami z loginem i hasłem – zob. `2026-10-13-konta-uzytkownikow-design.md`. Model tabeli `games` z tego dokumentu nadal obowiązuje.
+
 Data: 2026-10-13. Gra: „Nić Ariadny” (`index.html`, `js/`), hostowana na GitHub Pages.
 
 ## Cel
