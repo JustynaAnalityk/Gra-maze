@@ -77,6 +77,10 @@
     $('profile-muted').checked = Sound.isMuted();
     ['profile-error', 'cp-error'].forEach(function (id) { showError(id, ''); });
     $('cp-ok').hidden = true;
+    // Do czasu odpowiedzi z bazy kreski – nie pokazujemy liczb z poprzedniej wizyty.
+    ['st-played', 'st-won', 'st-gaveup', 'st-time'].forEach(function (id) { $(id).textContent = '–'; });
+    $('profile-records').textContent = '';
+    $('profile-history').textContent = '';
     Promise.all([Api.getStats(), Api.getBest(), Api.getHistory(HISTORY_LIMIT)]).then(function (r) {
       if (seq !== loadSeq) return;
       renderStats(r[0]);

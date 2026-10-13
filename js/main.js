@@ -1,10 +1,11 @@
 // Spina całość: ekrany, konto gracza, zapis gier, pasek informacji, pętla rysowania i zdarzenia.
-(function () {
+(function (global) {
   'use strict';
 
   var WIN_OVERLAY_DELAY = 700; // chwila na konfetti przed ekranem wygranej
   var SAVE_DELAY = 3000;       // postęp zapisujemy najwyżej co 3 s
   var RETRY_DELAY = 5000;      // ponowienie nieudanego zapisu
+  var ELAPSED_STEP = 500;      // sam upływ czasu (bez ruchu) zapisujemy, gdy urośnie o tyle ms
   var TOAST_MS = 4500;
   var GUEST_SAVE_REASON = 'Zaloguj się lub załóż konto, aby zapisać ten wynik.';
 
@@ -62,6 +63,39 @@
   var lastUserId = null;
   var save = newSaveState();
 
+  // Zakończone gry, których wyniku nie udało się zapisać w bazie (np. brak sieci w chwili wygranej).
+  // Ponawiamy w menu – ten sam wiersz gry, więc bez podwójnej wygranej i bez „Wznów” dla wygranej gry.
+  var PENDING_KEY = 'nic.pending-finish';
+  var pendingMemory = [];
+
+  function loadPending() {
+    try {
+      var list = JSON.parse(global.localStorage.getItem(PENDING_KEY) || '[]');
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return pendingMemory.slice();
+    }
+  }
+
+  function storePending(list) {
+    pendingMemory = list.slice();
+    try { global.localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch (e) { /* zostaje w pamięci */ }
+  }
+
+  function retryPendingFinishes() {
+    var user = Api.user();
+    var mine = user ? loadPending().filter(function (p) { return p.user === user.id; }) : [];
+    function drop(p) { storePending(loadPending().filter(function (q) { return q.id !== p.id; })); }
+    return mine.reduce(function (chain, p) {
+      return chain.then(function () {
+        return Api.finishGame(p.id, p.snap).then(function () { drop(p); }, function (e) {
+          // Baza odrzuciła (gra zamknięta gdzie indziej) – wynik idzie drogą wyników gościa.
+          if (e.kind === 'data') { drop(p); GuestResults.add(p.snap); }
+        });
+      });
+    }, Promise.resolve());
+  }
+
   function plural(n, one, few, many) {
     if (n === 1) return one;
     var d = n % 10, t = n % 100;
@@ -108,7 +142,8 @@
       renderResume();
       return;
     }
-    syncGuestResults()
+    retryPendingFinishes()
+      .then(syncGuestResults)
       .then(function () { return Promise.all([Api.getBest(), Api.getPlayingGame()]); })
       .then(function (r) {
         if (seq !== menuSeq || el.menu.hidden) return;
@@ -200,14 +235,24 @@
     difficulty = diff;
     game = new Game(diff);
     beginPlay();
-    if (!Api.user()) return;
-    var state = save;
-    Api.startGame(game.snapshot()).then(function (id) {
+    if (Api.user()) insertGame(save, game);
+  }
+
+  // Wpis nowej gry w bazie. Po błędzie (np. chwilowy brak sieci) ponawiamy co RETRY_DELAY,
+  // dopóki gracz jest w tej grze – inaczej nie dałoby się jej wznowić.
+  function insertGame(state, g) {
+    Api.startGame(g.snapshot()).then(function (id) {
       if (save !== state) return;
       state.id = id;
+      setSaveState(false);
       if (isDirty()) scheduleSave(0);
     }, function (e) {
-      if (save === state) onSaveError(e);
+      if (save !== state) return;
+      setSaveState(true);
+      if (e.kind === 'auth') { onSessionLost(); return; }
+      state.retry = setTimeout(function () {
+        if (save === state && g.status === 'playing') insertGame(state, g);
+      }, RETRY_DELAY);
     });
   }
 
@@ -225,6 +270,7 @@
     difficulty = game.difficulty;
     save.id = saved.id;
     save.sent = saveKey(game);
+    save.sentElapsed = saved.elapsed_ms || 0;
     beginPlay();
   }
 
@@ -247,6 +293,7 @@
     stopLoop();
     clearTimeout(winTimer);
     clearTimeout(save.timer);
+    clearTimeout(save.retry);
     save = newSaveState();
     game = null;
     hideOverlay();
@@ -276,7 +323,7 @@
   // ---- Zapis postępu (tylko zalogowani) ----
 
   function newSaveState() {
-    return { id: null, timer: null, busy: null, sent: '' };
+    return { id: null, timer: null, retry: null, busy: null, sent: '', sentElapsed: 0 };
   }
 
   function saveKey(g) {
@@ -296,14 +343,20 @@
     }, delay === undefined ? SAVE_DELAY : delay);
   }
 
+  // Czy stan różni się od ostatnio zapisanego: nowe ruchy, podpowiedzi albo czas (myślenie bez ruchu).
+  function changed(state, snap) {
+    return snap.path + '|' + snap.hints_used !== state.sent || snap.elapsed_ms - state.sentElapsed >= ELAPSED_STEP;
+  }
+
   // Wysyła stan gry. Gdy poprzedni zapis jeszcze trwa, czeka na niego.
   function saveNow(state, snap) {
     var key = snap.path + '|' + snap.hints_used;
-    if (!state.id || snap.status !== 'playing' || key === state.sent) return Promise.resolve();
+    if (!state.id || snap.status !== 'playing' || !changed(state, snap)) return Promise.resolve();
     if (state.busy) return state.busy.then(function () { return saveNow(state, snap); });
     state.busy = Api.saveGame(state.id, snap).then(function () {
       state.busy = null;
       state.sent = key;
+      state.sentElapsed = Math.max(state.sentElapsed, snap.elapsed_ms);
       if (save === state) {
         setSaveState(false);
         if (isDirty()) scheduleSave();
@@ -315,11 +368,12 @@
     return state.busy;
   }
 
-  // Zamykanie lub chowanie karty: zapis, który przeżyje zamknięcie strony.
+  // Zamykanie lub chowanie karty: zapis, który przeżyje zamknięcie strony. Nie oznaczamy go jako
+  // potwierdzonego – jeśli się nie uda, kolejny zwykły zapis (np. przy wyjściu do menu) go powtórzy.
   function beaconSave() {
-    if (!isDirty() || game.status !== 'playing') return;
-    Api.saveGameBeacon(save.id, game.snapshot(performance.now()));
-    save.sent = saveKey(game);
+    if (!game || !save.id || game.status !== 'playing') return;
+    var snap = game.snapshot(performance.now());
+    if (changed(save, snap)) Api.saveGameBeacon(save.id, snap);
   }
 
   function onSaveError(e) {
@@ -348,11 +402,16 @@
     var state = save;
     clearTimeout(state.timer);
     state.timer = null;
-    if (Api.user() && state.id) {
+    var user = Api.user();
+    if (user && state.id) {
       var id = state.id;
       state.id = null; // w tej grze nic więcej nie zapisujemy
       (state.busy || Promise.resolve()).then(function () { return Api.finishGame(id, snap); })
-        .then(null, function () { GuestResults.add(snap); renderAccount(); });
+        .then(null, function (e) {
+          if (e.kind === 'data') GuestResults.add(snap);
+          else storePending(loadPending().concat([{ id: id, user: user.id, snap: snap }]));
+          renderAccount();
+        });
       return;
     }
     if (snap.status === 'won' || snap.moves > 0) GuestResults.add(snap);
@@ -559,4 +618,4 @@
   renderMute();
   showMenu();
   Api.init().catch(function () { renderAccount(); });
-})();
+})(window);

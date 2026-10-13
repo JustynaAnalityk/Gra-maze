@@ -128,6 +128,56 @@ await page.click('#form-login button[type=submit]');
 await page.waitForFunction(() => /Zalogowano/.test(document.getElementById('account-status').textContent), null, { timeout: 15000 });
 ok('logowanie e-mailem nowym hasłem', true);
 
+// 5b. Poprawki po recenzji (zalogowany gracz)
+const toMs = s => { const m = /(\d+):(\d+)\.(\d)/.exec(s || ''); return m ? (+m[1] * 60 + +m[2]) * 1000 + +m[3] * 100 : 0; };
+const resumeText = () => page.textContent('#btn-resume');
+
+// (1) Czas spędzony bez ruchu też się zapisuje
+await page.click('[data-difficulty="medium"]');
+await walk(page, 3);
+await page.waitForTimeout(3500); // autozapis po ruchach
+await page.waitForTimeout(4000); // gracz myśli – bez ruchu
+const idleT = toMs(await page.textContent('#hud-time'));
+await page.keyboard.press('Escape');
+await page.waitForSelector('#btn-resume:not([hidden])', { timeout: 10000 });
+const resumeT = toMs((await resumeText()).split('·')[1]);
+ok('czas bez ruchu zapisany przy wyjściu', resumeT >= idleT - 500, resumeT + ' ms, a w grze było ' + idleT + ' ms');
+
+// (2) Nieudany start gry w bazie jest ponawiany
+let blockedStart = false;
+await page.route('**/rest/v1/games*', (route, req) => {
+  if (!blockedStart && req.method() === 'POST') { blockedStart = true; return route.abort(); }
+  return route.continue();
+});
+await page.click('[data-difficulty="easy"]');
+await walk(page, 3);
+await page.waitForTimeout(7000); // ponowienie startu po 5 s, potem zapis ruchów
+await page.keyboard.press('Escape');
+await page.waitForSelector('#btn-resume:not([hidden])', { timeout: 10000 });
+ok('nieudany start gry jest ponawiany', blockedStart && /Łatwy .* 3 ruchy/.test(await resumeText()), await resumeText());
+await page.unroute('**/rest/v1/games*');
+
+// (3) Nieudany zapis wygranej nie zostawia gry „do wznowienia” ani podwójnej wygranej
+let blockedFinish = false;
+await page.route('**/rest/v1/games*', (route, req) => {
+  if (!blockedFinish && req.method() === 'PATCH' && /"status":"won"/.test(req.postData() || '')) { blockedFinish = true; return route.abort(); }
+  return route.continue();
+});
+await page.click('[data-difficulty="easy"]');
+await walk(page, 2000);
+await page.waitForSelector('#overlay:not([hidden])');
+await page.waitForTimeout(1500);
+await page.unroute('**/rest/v1/games*');
+await page.click('#ov-menu');
+await page.waitForTimeout(4000);
+ok('nieudany zapis wygranej: brak „Wznów” dla wygranej gry', blockedFinish && await page.isHidden('#btn-resume'),
+  (await page.isHidden('#btn-resume')) ? '' : await resumeText());
+await page.click('#btn-profile');
+await page.waitForFunction(() => document.getElementById('st-played').textContent !== '–', null, { timeout: 10000 });
+ok('nieudany zapis wygranej: wygrana policzona raz (razem 2)', (await page.textContent('#st-won')) === '2',
+  await page.textContent('#st-won') + ' | ' + JSON.stringify(await page.evaluate(() => Api.getHistory(6).then(h => h.map(g => g.difficulty + ':' + g.status + ':' + g.moves)))));
+await page.click('#profile-back');
+
 // 6. Pisanie w polach nie steruje grą (Review Focus 1)
 await page.click('#btn-logout');
 await page.click('#btn-login');
@@ -152,12 +202,24 @@ await phone.waitForTimeout(1000); await phone.screenshot({ path: path.join(OUT, 
 const off = await newPage();
 await off.route('**/cdn.jsdelivr.net/**', r => r.abort());
 await off.goto(GAME);
+await off.waitForFunction(() => /Brak połączenia/.test(document.getElementById('account-status').textContent), null, { timeout: 12000 }).catch(() => {});
 ok('offline: komunikat w menu', /Brak połączenia/.test(await status(off)), await status(off));
 ok('offline: brak przycisku logowania', await off.isHidden('#btn-login'));
 await off.click('[data-difficulty="easy"]');
 await walk(off, 2000);
 await off.waitForSelector('#overlay:not([hidden])');
 ok('offline: wygrana trafia do kolejki gościa', await off.evaluate(() => GuestResults.count() === 1));
+
+// 9. Wolna sieć: serwer bibliotek nie odpowiada wcale – gra nie może czekać na Supabase
+const slow = await newPage();
+await slow.route('**/cdn.jsdelivr.net/**', () => { /* brak odpowiedzi */ });
+await slow.goto(GAME, { waitUntil: 'commit' });
+await slow.waitForTimeout(3000);
+await slow.click('[data-difficulty="easy"]', { timeout: 2000 }).catch(() => {});
+ok('wolna sieć: gra rusza bez czekania na Supabase', await slow.isVisible('#game'));
+await slow.keyboard.press('Escape');
+await slow.waitForFunction(() => /Brak połączenia/.test(document.getElementById('account-status').textContent), null, { timeout: 12000 }).catch(() => {});
+ok('wolna sieć: po chwili komunikat „Brak połączenia”', /Brak połączenia/.test(await status(slow)), await status(slow));
 
 // „Failed to load resource” to wpis przeglądarki o odpowiedzi HTTP (np. celowe złe hasło → 401), nie błąd kodu.
 const ownErrors = errors.filter(e => !/supabase|ERR_FAILED|net::|Failed to load resource/i.test(e));

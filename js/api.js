@@ -5,11 +5,33 @@
   'use strict';
 
   var cfg = global.SUPABASE_CONFIG;
+  var LIB_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js';
+  var LIB_TIMEOUT = 8000;
   var client = null;
-  try {
-    if (global.supabase && cfg) client = global.supabase.createClient(cfg.url, cfg.key);
-  } catch (e) {
-    client = null;
+  var libFailed = false;
+
+  // Biblioteka Supabase wczytywana w tle – gra nie czeka na nią przy starcie (wolna sieć, brak internetu).
+  function loadLibrary() {
+    return new Promise(function (resolve, reject) {
+      if (global.supabase) { resolve(); return; }
+      var script = document.createElement('script');
+      var timer = setTimeout(function () { reject(new Error('Failed to fetch')); }, LIB_TIMEOUT);
+      script.src = LIB_URL;
+      script.async = true;
+      script.onload = function () {
+        clearTimeout(timer);
+        if (global.supabase) resolve(); else reject(new Error('Failed to fetch'));
+      };
+      script.onerror = function () {
+        clearTimeout(timer);
+        reject(new Error('Failed to fetch'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  function createClient() {
+    if (!client && cfg && global.supabase) client = global.supabase.createClient(cfg.url, cfg.key);
   }
 
   var NETWORK_RE = /failed to fetch|networkerror|network request failed|load failed|failed to send a request/i;
@@ -91,8 +113,31 @@
     return { path: s.path, moves: s.moves, elapsed_ms: s.elapsed_ms, hints_used: s.hints_used };
   }
 
+  // Nasłuch zmian sesji i odczyt zapamiętanej sesji (po wczytaniu biblioteki).
+  function listen() {
+    client.auth.onAuthStateChange(function (event, session) {
+      accessToken = session ? session.access_token : null;
+      if (event === 'SIGNED_OUT' && currentUser) {
+        currentUser = null;
+        emit();
+      }
+      if (event === 'PASSWORD_RECOVERY') {
+        recovery = true;
+        // W callbacku nie wolno czekać na inne wywołania supabase-js – stąd setTimeout.
+        setTimeout(function () {
+          refreshUser(session).catch(function () {});
+          recoveryListeners.forEach(function (fn) { fn(); });
+        }, 0);
+      }
+    });
+    return run(function () {
+      return client.auth.getSession().then(function (res) { return refreshUser(unwrap(res).session); });
+    });
+  }
+
   var Api = {
-    available: function () { return !!client; },
+    // Do czasu wczytania biblioteki zakładamy, że serwer jest dostępny (nie straszymy „brakiem połączenia”).
+    available: function () { return !libFailed && !!cfg; },
     user: function () { return currentUser; },
     onChange: function (fn) { listeners.push(fn); },
     onRecovery: function (fn) {
@@ -102,26 +147,17 @@
 
     // Odczyt zapamiętanej sesji i nasłuch zmian (wylogowanie, link z maila do nowego hasła).
     init: function () {
-      if (!client) return Promise.resolve(null);
-      client.auth.onAuthStateChange(function (event, session) {
-        accessToken = session ? session.access_token : null;
-        if (event === 'SIGNED_OUT' && currentUser) {
-          currentUser = null;
-          emit();
-        }
-        if (event === 'PASSWORD_RECOVERY') {
-          recovery = true;
-          // W callbacku nie wolno czekać na inne wywołania supabase-js – stąd setTimeout.
-          setTimeout(function () {
-            refreshUser(session).catch(function () {});
-            recoveryListeners.forEach(function (fn) { fn(); });
-          }, 0);
-        }
-      });
-      return run(function () {
-        return client.auth.getSession().then(function (res) { return refreshUser(unwrap(res).session); });
+      return loadLibrary().then(function () {
+        createClient();
+        if (!client) throw new Error('Failed to fetch');
+      }).then(function () {
+        return listen();
+      }, function (e) {
+        libFailed = true;
+        throw toError(e, 'network');
       });
     },
+
 
     usernameAvailable: function (name) {
       return run(function () { return need().rpc('username_available', { name: name }).then(unwrap); });
