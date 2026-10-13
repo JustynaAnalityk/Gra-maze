@@ -127,7 +127,7 @@
       // ---- Gra ----
 
       test('Gracz nie przechodzi przez ściany, a uderzenie nie liczy się jako ruch', function () {
-        var game = new Game('medium', Maze.mulberry32(42));
+        var game = new Game('medium', 42);
         // Z lewego górnego rogu nie da się wyjść w górę ani w lewo.
         assertEqual(game.move('up', 0), 'blocked');
         assertEqual(game.move('left', 0), 'blocked');
@@ -141,7 +141,7 @@
       });
 
       test('Każdy krok w grze zgadza się z mapą ścian', function () {
-        var game = new Game('easy', Maze.mulberry32(7));
+        var game = new Game('easy', 7);
         var rng = Maze.mulberry32(99);
         for (var i = 0; i < 500 && game.status === 'playing'; i++) {
           var dir = Maze.DIR_NAMES[Math.floor(rng() * 4)];
@@ -156,7 +156,7 @@
 
       test('Wygrana wykrywa się na mecie, a potem ruchy są ignorowane', function () {
         ['easy', 'medium', 'hard'].forEach(function (diff) {
-          var game = new Game(diff, Maze.mulberry32(123));
+          var game = new Game(diff, 123);
           var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal));
           var t = 1000;
           for (var i = 0; i < dirs.length; i++) {
@@ -171,7 +171,7 @@
       });
 
       test('Ślad zapisuje przebytą drogę', function () {
-        var game = new Game('easy', Maze.mulberry32(5));
+        var game = new Game('easy', 5);
         var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal)).slice(0, 4);
         dirs.forEach(function (d, i) { game.move(d, i); });
         assertEqual(game.trail.length, 5);
@@ -180,7 +180,7 @@
       });
 
       test('Podpowiedź: 5 pól właściwej drogi, 2 sekundy, maksymalnie 3 razy', function () {
-        var game = new Game('hard', Maze.mulberry32(11));
+        var game = new Game('hard', 11);
         var path = Maze.solve(game.maze, game.start, game.goal);
         assert(game.useHint(0), 'pierwsza podpowiedź');
         assertEqual(game.hintCells.length, 5);
@@ -195,7 +195,7 @@
       });
 
       test('Podpowiedź przy mecie jest krótsza niż 5 pól', function () {
-        var game = new Game('easy', Maze.mulberry32(3));
+        var game = new Game('easy', 3);
         var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal));
         for (var i = 0; i < dirs.length - 2; i++) game.move(dirs[i], i);
         game.useHint(0);
@@ -203,7 +203,7 @@
       });
 
       test('Poddanie się pokazuje całą drogę i kończy grę', function () {
-        var game = new Game('medium', Maze.mulberry32(8));
+        var game = new Game('medium', 8);
         game.move(Maze.canMove(game.maze, 0, 0, 'right') ? 'right' : 'down', 0);
         assert(game.giveUp(500));
         assertEqual(game.status, 'gaveup');
@@ -218,6 +218,80 @@
         assertEqual(formatTime(0), '0:00.0');
         assertEqual(formatTime(9999), '0:09.9');
         assertEqual(formatTime(75300), '1:15.3');
+      });
+
+      // ---- Zapis i wznawianie ----
+
+      function mazeKey(maze) {
+        var s = '';
+        for (var i = 0; i < maze.cells.length; i++) s += maze.cells[i].toString(16);
+        return s;
+      }
+
+      test('Ten sam seed daje ten sam labirynt, a gra bez seeda losuje go sama', function () {
+        assertEqual(mazeKey(new Game('medium', 12345).maze), mazeKey(new Game('medium', 12345).maze), 'labirynt z tego samego seeda');
+        var g = new Game('easy');
+        assert(typeof g.seed === 'number' && g.seed >= 0 && g.seed <= 4294967295 && g.seed === Math.floor(g.seed), 'losowy seed uint32: ' + g.seed);
+        assertEqual(mazeKey(g.maze), mazeKey(new Game('easy', g.seed).maze), 'labirynt odtworzony z losowego seeda');
+      });
+
+      test('Ścieżka zapisuje tylko udane ruchy literami U D L R', function () {
+        var game = new Game('easy', 5);
+        var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal)).slice(0, 4);
+        game.move('up', 0);   // ściany obwodu – bez zapisu
+        game.move('left', 0);
+        dirs.forEach(function (d, i) { game.move(d, i); });
+        var expected = dirs.map(function (d) { return { up: 'U', down: 'D', left: 'L', right: 'R' }[d]; }).join('');
+        assertEqual(game.path, expected);
+        assertEqual(game.moves, game.path.length);
+      });
+
+      test('Wznowienie odtwarza labirynt, pozycję, nić, ruchy, czas i podpowiedzi', function () {
+        var game = new Game('medium', 777);
+        var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal)).slice(0, 12);
+        dirs.forEach(function (d, i) { game.move(d, 1000 + i * 100); });
+        game.useHint(2500);
+        var snap = game.snapshot(5000);
+        assertEqual(snap.elapsed_ms, 4000, 'czas w zapisie');
+        var restored = Game.restore(snap, 20000);
+        assertEqual(mazeKey(restored.maze), mazeKey(game.maze), 'labirynt');
+        assertEqual(restored.player.x + ',' + restored.player.y, game.player.x + ',' + game.player.y, 'pozycja');
+        assertEqual(JSON.stringify(restored.trail), JSON.stringify(game.trail), 'nić');
+        assertEqual(restored.moves, 12, 'ruchy');
+        assertEqual(restored.path, game.path, 'ścieżka');
+        assertEqual(restored.elapsed(20000), 4000, 'czas po wznowieniu');
+        assertEqual(restored.elapsed(21500), 5500, 'zegar biegnie dalej');
+        assertEqual(restored.hintsUsed, 1, 'użyte podpowiedzi');
+        assertEqual(restored.hintsLeft, 2, 'pozostałe podpowiedzi');
+        assertEqual(restored.status, 'playing');
+      });
+
+      test('Wznowienie gry bez ruchów: zegar startuje dopiero od pierwszego ruchu', function () {
+        var restored = Game.restore({ difficulty: 'easy', seed: 9, path: '', elapsed_ms: 0, hints_used: 0 }, 5000);
+        assertEqual(restored.startTime, null);
+        assertEqual(restored.elapsed(9000), 0);
+      });
+
+      test('Nie da się wznowić gry, której ścieżka kończy się na mecie albo nie pasuje do labiryntu', function () {
+        var game = new Game('easy', 31);
+        directionsFor(Maze.solve(game.maze, game.start, game.goal)).forEach(function (d, i) { game.move(d, i); });
+        assertEqual(game.status, 'won');
+        [game.path, 'UUU', 'X'].forEach(function (path) {
+          var threw = false;
+          try { Game.restore({ difficulty: 'easy', seed: 31, path: path, elapsed_ms: 1, hints_used: 0 }, 0); } catch (e) { threw = true; }
+          assert(threw, 'ścieżka „' + path.slice(0, 8) + '” nie powinna dać się wznowić');
+        });
+      });
+
+      test('Zapis zakończonej gry ma status i datę końca', function () {
+        var game = new Game('easy', 4);
+        game.move(Maze.canMove(game.maze, 0, 0, 'right') ? 'right' : 'down', 100);
+        game.giveUp(900);
+        var snap = game.snapshot(900);
+        assertEqual(snap.status, 'gaveup');
+        assert(snap.finished_at && snap.started_at <= snap.finished_at, 'daty');
+        assertEqual(snap.moves, 1);
+        assertEqual(new Game('easy', 4).snapshot().finished_at, null, 'gra w toku nie ma daty końca');
       });
 
       // ---- Uruchomienie ----
