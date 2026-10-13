@@ -14,6 +14,12 @@
     return KEY_DIRS[e.key] || KEY_DIRS[e.code] || null;
   }
 
+  // Klawisze wpisywane w pola formularza (logowanie, profil) nie sterują grą.
+  function isTyping(e) {
+    var t = e.target;
+    return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+  }
+
   // opts: onMove(dir), onKey(event), swipeTarget (element), swipeThreshold() -> px
   function init(opts) {
     var heldCode = null;
@@ -30,6 +36,7 @@
     // Własne powtarzanie zamiast systemowego – równe tempo niezależnie od ustawień systemu.
     document.addEventListener('keydown', function (e) {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTyping(e)) return;
       var dir = dirFromEvent(e);
       if (dir) {
         e.preventDefault();
@@ -84,5 +91,5 @@
     target.addEventListener('pointercancel', endTouch);
   }
 
-  global.Input = { init: init };
+  global.Input = { init: init, isTyping: isTyping };
 })(window);

@@ -22,6 +22,7 @@
   <script src="js/maze.js"></script>
   <script src="js/game.js"></script>
   <script src="js/guest.js"></script>
+  <script src="js/input.js"></script>
   <script>
     (function () {
       'use strict';
@@ -365,6 +366,26 @@
         assertEqual(gr.count(), 0);
         gr.add(result(1));
         assertEqual(gr.count(), 1);
+      });
+
+      // ---- Sterowanie ----
+
+      test('Pisanie w polach formularza nie porusza graczem ani nie wywołuje skrótów', function () {
+        var moves = [], keys = [];
+        Input.init({ onMove: function (d) { moves.push(d); }, onKey: function (e) { keys.push(e.key); } });
+        var input = document.createElement('input');
+        document.body.appendChild(input);
+        ['w', 'a', 's', 'd', 'm', 'h', 'r'].forEach(function (k) {
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: 'Key' + k.toUpperCase(), bubbles: true }));
+        });
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', bubbles: true }));
+        assertEqual(moves.length + keys.length, 0, 'zdarzenia z pola tekstowego');
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW', bubbles: true }));
+        document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', code: 'KeyW', bubbles: true }));
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', code: 'KeyM', bubbles: true }));
+        assertEqual(moves.join(','), 'up', 'ruch poza polem tekstowym');
+        assertEqual(keys.join(','), 'm', 'skrót poza polem tekstowym');
+        input.remove();
       });
 
       // ---- Uruchomienie ----
