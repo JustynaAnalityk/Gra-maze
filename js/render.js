@@ -1,4 +1,4 @@
-// Rysowanie planszy na <canvas>: ściany, ślad, podpowiedź, rozwiązanie, gracz, meta, konfetti.
+// Rysowanie planszy na <canvas>: ściany, nić, kłębek, podpowiedź, rozwiązanie, gracz, brama, konfetti.
 (function (global) {
   'use strict';
 
@@ -41,7 +41,7 @@
   // Kolory bierzemy ze zmiennych CSS, więc motyw jasny/ciemny ustawia się w jednym miejscu.
   Renderer.prototype.readColors = function () {
     var s = getComputedStyle(document.documentElement);
-    var names = ['board', 'wall', 'player', 'goal', 'trail'];
+    var names = ['board', 'wall', 'player', 'goal', 'trail', 'thread'];
     for (var i = 0; i < names.length; i++) {
       this.colors[names[i]] = s.getPropertyValue('--' + names[i]).trim() || '#888';
     }
@@ -103,7 +103,7 @@
   };
 
   Renderer.prototype.startConfetti = function (game, now) {
-    var colors = [this.colors.player, this.colors.goal, this.colors.trail, this.colors.wall];
+    var colors = [this.colors.thread, this.colors.goal, this.colors.trail, this.colors.wall];
     this.layout(game);
     this.winAt = now;
     if (reducedMotion) return;
@@ -143,11 +143,11 @@
     if (game.hintUntil !== this.lastHintUntil) { this.lastHintUntil = game.hintUntil; this.hintAt = now; }
     if (game.solution && !this.solutionAt) this.solutionAt = now;
 
-    this.drawStart(game);
     this.drawGoalGlow(game, now);
     if (game.hintVisible(now)) this.drawHint(game, now);
     this.drawTrail(game, pos);
     if (game.solution) this.drawSolution(game, now);
+    this.drawStart(game);
     this.drawWalls(game);
     this.drawGoal(game, now);
     if (this.winAt) this.drawRipple(game, now);
@@ -219,37 +219,98 @@
     if (last) ctx.lineTo(this.cx(last.x), this.cy(last.y));
   };
 
-  // Znacznik startu: przerywany pierścień w narożniku.
+  // Kłębek nici na starcie. Maleje, im dłuższą drogę przeszedł gracz,
+  // ale nie znika – zawsze widać, gdzie jest wejście.
   Renderer.prototype.drawStart = function (game) {
-    var ctx = this.ctx, c = this.cell;
+    var ctx = this.ctx, c = this.cell, n = game.size;
+    var used = Math.min(1, (game.trail.length - 1) / (n * n * 0.7));
+    var r = c * 0.3 * (1 - 0.6 * used);
+    var x = this.cx(game.start.x), y = this.cy(game.start.y);
     ctx.save();
-    ctx.strokeStyle = this.colors.player;
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = Math.max(1, c * 0.06);
-    ctx.setLineDash([c * 0.12, c * 0.1]);
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = this.colors.wall;
     ctx.beginPath();
-    ctx.arc(this.cx(game.start.x), this.cy(game.start.y), c * 0.36, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.ellipse(x, y + r * 0.6, r * 0.95, r * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.translate(x, y);
+    var g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
+    g.addColorStop(0, lighten(this.colors.thread, 0.3));
+    g.addColorStop(1, this.colors.thread);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Zwoje nawiniętej nici
+    ctx.clip();
+    ctx.strokeStyle = '#000';
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = Math.max(0.6, r * 0.1);
+    var turns = [-0.7, 0.35, 1.3];
+    for (var i = 0; i < turns.length; i++) {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 0.95, r * 0.42, turns[i], 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
   };
 
+  // Ścieżka nici przez środki odwiedzonych pól, lekko falująca w połowie każdego kroku.
+  // Wychylenie zależy od numeru kroku, więc nić nie drga między klatkami,
+  // a powrót tą samą drogą kładzie obok drugą, osobną nitkę.
+  Renderer.prototype.threadPath = function (cells, last) {
+    var ctx = this.ctx, amp = this.cell * 0.1;
+    var all = last ? cells.concat([last]) : cells;
+    var pts = [], prev = null;
+    for (var i = 0; i < all.length; i++) {
+      var p = { x: this.cx(all[i].x), y: this.cy(all[i].y) };
+      if (prev) {
+        var dx = p.x - prev.x, dy = p.y - prev.y;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0.5) {
+          var off = amp * wobble(i) * Math.min(1, len / this.cell);
+          pts.push({ x: (prev.x + p.x) / 2 - dy / len * off, y: (prev.y + p.y) / 2 + dx / len * off });
+        }
+      }
+      pts.push(p);
+      prev = p;
+    }
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (var j = 1; j < pts.length - 1; j++) {
+      ctx.quadraticCurveTo(pts[j].x, pts[j].y, (pts[j].x + pts[j + 1].x) / 2, (pts[j].y + pts[j + 1].y) / 2);
+    }
+    if (pts.length > 1) ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+  };
+
+  // Czerwona nić Ariadny rozwijana za graczem.
   Renderer.prototype.drawTrail = function (game, pos) {
     var trail = game.trail;
     if (trail.length < 2 && pos.x === trail[0].x && pos.y === trail[0].y) return;
-    var ctx = this.ctx;
+    var ctx = this.ctx, c = this.cell;
     var cells = trail.length > 1 ? trail.slice(0, -1) : trail;
+    var w = Math.max(1.5, c * 0.09);
     ctx.save();
-    ctx.strokeStyle = this.colors.trail;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = this.cell * 0.24;
-    // Cała droga bledsza, ostatnie kroki wyraźniejsze – widać kierunek marszu.
-    ctx.globalAlpha = 0.28;
-    this.polyline(cells, pos);
+    // Cień nici na papierze
+    ctx.save();
+    ctx.translate(0, Math.max(0.8, c * 0.05));
+    this.threadPath(cells, pos);
+    ctx.strokeStyle = this.colors.wall;
+    ctx.globalAlpha = 0.16;
+    ctx.lineWidth = w * 1.3;
     ctx.stroke();
-    var recent = cells.slice(Math.max(0, cells.length - 8));
-    ctx.globalAlpha = 0.35;
-    this.polyline(recent, pos);
+    ctx.restore();
+    this.threadPath(cells, pos);
+    ctx.strokeStyle = this.colors.thread;
+    ctx.lineWidth = w;
+    ctx.stroke();
+    // Jaśniejsze kreski udają skręcone włókna.
+    ctx.strokeStyle = lighten(this.colors.thread, 0.45);
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = w * 0.4;
+    ctx.setLineDash([w * 1.2, w * 1.4]);
     ctx.stroke();
     ctx.restore();
   };
@@ -322,29 +383,32 @@
     ctx.restore();
   };
 
+  // Meta: brama – wyjście z labiryntu.
   Renderer.prototype.drawGoal = function (game, now) {
     var ctx = this.ctx, c = this.cell;
     var x = this.cx(game.goal.x), y = this.cy(game.goal.y);
-    var rot = reducedMotion ? 0 : now / 2600;
-    var r = c * 0.36;
+    var r = c * 0.38;
     if (this.winAt) {
       var k = Math.min(1, (now - this.winAt) / 400);
       r *= 1 + 0.35 * Math.sin(k * Math.PI);
     }
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(rot);
-    starPath(ctx, r, r * 0.46);
+    // Ciemny prześwit między kolumnami
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-r * 0.52, -r * 0.4, r * 1.04, r * 1.25);
+    ctx.globalAlpha = 1;
+    gatePath(ctx, r);
     ctx.shadowColor = this.colors.goal;
-    ctx.shadowBlur = c * 0.35;
+    ctx.shadowBlur = c * 0.3;
     ctx.fillStyle = this.colors.goal;
     ctx.fill();
     ctx.shadowBlur = 0;
-    // Jaśniejszy środek – gwiazdka wygląda na błyszczącą.
-    starPath(ctx, r * 0.5, r * 0.23);
+    // Połysk na lewej kolumnie
     ctx.globalAlpha = 0.45;
     ctx.fillStyle = '#fff';
-    ctx.fill();
+    ctx.fillRect(-r * 0.76, -r * 0.36, r * 0.08, r * 1.15);
     ctx.restore();
   };
 
@@ -453,15 +517,23 @@
     this.confetti = alive;
   };
 
-  function starPath(ctx, r, inner) {
+  // Brama w kwadracie 2r×2r: trójkątny szczyt, nadproże, dwie kolumny i stopień.
+  function gatePath(ctx, r) {
     ctx.beginPath();
-    for (var i = 0; i < 10; i++) {
-      var rad = i % 2 === 0 ? r : inner;
-      var a = -Math.PI / 2 + i * Math.PI / 5;
-      var px = Math.cos(a) * rad, py = Math.sin(a) * rad;
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-    }
+    ctx.moveTo(-r, -r * 0.62);
+    ctx.lineTo(0, -r);
+    ctx.lineTo(r, -r * 0.62);
     ctx.closePath();
+    ctx.rect(-r * 0.95, -r * 0.58, r * 1.9, r * 0.18);
+    ctx.rect(-r * 0.82, -r * 0.4, r * 0.3, r * 1.25);
+    ctx.rect(r * 0.52, -r * 0.4, r * 0.3, r * 1.25);
+    ctx.rect(-r * 0.95, r * 0.85, r * 1.9, r * 0.15);
+  }
+
+  // Stała pseudolosowa wartość z zakresu -1..1 dla danego numeru kroku.
+  function wobble(i) {
+    var s = Math.sin(i * 12.9898) * 43758.5453;
+    return (s - Math.floor(s)) * 2 - 1;
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -486,7 +558,6 @@
     return 'rgb(' + r + ',' + g + ',' + b + ')';
   }
 
-  Renderer.starPath = starPath;
   Renderer.lighten = lighten;
   global.Renderer = Renderer;
 })(window);
