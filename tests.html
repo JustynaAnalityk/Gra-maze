@@ -21,6 +21,7 @@
 
   <script src="js/maze.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/guest.js"></script>
   <script>
     (function () {
       'use strict';
@@ -292,6 +293,78 @@
         assert(snap.finished_at && snap.started_at <= snap.finished_at, 'daty');
         assertEqual(snap.moves, 1);
         assertEqual(new Game('easy', 4).snapshot().finished_at, null, 'gra w toku nie ma daty końca');
+      });
+
+      // ---- Wyniki gościa ----
+
+      function memoryStorage() {
+        var data = {};
+        return {
+          getItem: function (k) { return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+          setItem: function (k, v) { data[k] = String(v); }
+        };
+      }
+      function result(i, extra) {
+        var r = { difficulty: 'easy', seed: i, path: 'R', moves: 1, elapsed_ms: 1000 + i, hints_used: 0, status: 'won',
+                  started_at: '2026-10-13T10:00:00.000Z', finished_at: '2026-10-13T10:01:00.000Z' };
+        for (var k in extra) r[k] = extra[k];
+        return r;
+      }
+
+      test('Wyniki gościa: dodawanie, licznik i rekord tylko z wygranych', function () {
+        var store = memoryStorage();
+        var gr = GuestResults.create(function () { return store; });
+        gr.add(result(1, { elapsed_ms: 9000 }));
+        gr.add(result(2, { elapsed_ms: 4000, difficulty: 'medium' }));
+        gr.add(result(3, { elapsed_ms: 2000, status: 'gaveup' }));
+        gr.add(result(4, { elapsed_ms: 7000 }));
+        assertEqual(gr.count(), 4);
+        assertEqual(gr.best('easy'), 7000, 'rekord łatwego bez poddanej gry');
+        assertEqual(gr.best('medium'), 4000);
+        assertEqual(gr.best('hard'), null);
+        var again = GuestResults.create(function () { return store; });
+        assertEqual(again.count(), 4, 'wyniki przetrwały odświeżenie strony');
+      });
+
+      test('Wyniki gościa: najwyżej 20, najstarsze wypadają', function () {
+        var store = memoryStorage();
+        var gr = GuestResults.create(function () { return store; });
+        for (var i = 1; i <= 23; i++) gr.add(result(i));
+        var list = gr.list();
+        assertEqual(list.length, 20);
+        assertEqual(list[0].seed, 4, 'najstarszy zachowany');
+        assertEqual(list[19].seed, 23, 'najnowszy');
+      });
+
+      test('Wyniki gościa: usuwanie po zapisie w bazie', function () {
+        var store = memoryStorage();
+        var gr = GuestResults.create(function () { return store; });
+        gr.add(result(1)); gr.add(result(2)); gr.add(result(3));
+        var ids = gr.list().map(function (r) { return r.id; });
+        assert(ids[0] && ids[0] !== ids[1] && ids[1] !== ids[2], 'każdy wynik ma własne id');
+        gr.remove([ids[0], ids[2]]);
+        assertEqual(gr.count(), 1);
+        assertEqual(gr.list()[0].seed, 2);
+      });
+
+      test('Wyniki gościa działają bez localStorage (tryb prywatny, blokada)', function () {
+        var broken = { getItem: function () { throw new Error('blocked'); }, setItem: function () { throw new Error('blocked'); } };
+        var gr = GuestResults.create(function () { return broken; });
+        gr.add(result(1, { elapsed_ms: 3000 }));
+        assertEqual(gr.count(), 1, 'wynik trzymany w pamięci');
+        assertEqual(gr.best('easy'), 3000);
+        var none = GuestResults.create(function () { throw new Error('no storage'); });
+        none.add(result(2));
+        assertEqual(none.count(), 1);
+      });
+
+      test('Wyniki gościa: uszkodzone dane w localStorage nie psują gry', function () {
+        var store = memoryStorage();
+        store.setItem('nic.guest-results', '{to nie jest json');
+        var gr = GuestResults.create(function () { return store; });
+        assertEqual(gr.count(), 0);
+        gr.add(result(1));
+        assertEqual(gr.count(), 1);
       });
 
       // ---- Uruchomienie ----
