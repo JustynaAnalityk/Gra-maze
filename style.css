@@ -65,7 +65,23 @@ body {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.12 0 0 0 0 0.16 0 0 0 0 0.27 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* Rozmyty obrazek gry pod ekranem logowania i profilu (body[data-screen] ustawia main.js) */
+.scene-bg {
+  position: fixed;
+  inset: -40px;
+  z-index: 0;
+  pointer-events: none;
+  background: url("img/tlo-960.webp") right center / cover no-repeat;
+  filter: blur(14px) saturate(0.9);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+body[data-screen="auth"] .scene-bg,
+body[data-screen="profile"] .scene-bg { opacity: 0.32; }
+
 #app {
+  position: relative;
+  z-index: 1;
   height: 100vh;
   height: 100dvh;
   padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
@@ -302,23 +318,65 @@ h1 em {
   color: var(--muted);
 }
 
-.preview {
+/* Ilustracja w menu: obrazek „położony na biurku”, z animacjami z js/hero.js na canvasie nad nim.
+   Warstwy: ramka (obrót, cień, przycięcie) → paralaksa (mysz) → przybliżanie (CSS) → obrazek + canvas. */
+.hero {
   margin: 0;
   animation: rise 0.8s 0.15s cubic-bezier(.2,.7,.2,1) both;
 }
-.preview canvas {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1;
+.hero-frame {
+  position: relative;
+  aspect-ratio: 1041 / 909;
+  overflow: hidden;
   border-radius: 10px;
   background: var(--board);
   box-shadow:
     0 0 0 1px var(--border),
     0 2px 0 rgba(var(--shadow), 0.05),
-    0 24px 60px -20px rgba(var(--shadow), 0.35);
+    0 24px 60px -20px rgba(var(--shadow), 0.4);
   transform: rotate(1.5deg);
 }
-.preview figcaption {
+.hero-parallax {
+  position: absolute;
+  inset: -8px;
+  transform: translate(var(--px, 0px), var(--py, 0px));
+  transition: transform 0.6s cubic-bezier(.2,.7,.2,1);
+}
+.hero-inner {
+  position: absolute;
+  inset: 0;
+  animation: hero-drift 26s ease-in-out infinite alternate;
+  transform-origin: 70% 60%;
+}
+.hero-img,
+#hero-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.hero-img { display: block; object-fit: cover; }
+/* Nocny atrament: obrazek przygaszony i chłodniejszy, a poświata bramy z canvasu świeci mocniej. */
+@media (prefers-color-scheme: dark) {
+  .hero-img { filter: brightness(0.62) saturate(0.8) contrast(1.06); }
+  .hero-inner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(24, 38, 88, 0.28);
+    mix-blend-mode: multiply;
+    pointer-events: none;
+  }
+  #hero-fx { z-index: 1; }
+  body[data-screen="auth"] .scene-bg,
+  body[data-screen="profile"] .scene-bg { opacity: 0.18; }
+}
+/* Bardzo powolne przybliżanie całego obrazka – razem z animacjami, które leżą nad nim. */
+@keyframes hero-drift {
+  from { transform: scale(1); }
+  to { transform: scale(1.06) translate(-1%, -0.6%); }
+}
+.hero figcaption {
   margin-top: 1rem;
   text-align: center;
   font-family: var(--font-display);
@@ -736,15 +794,16 @@ label.check input { width: 1.1em; height: 1.1em; accent-color: var(--thread); }
   to { opacity: 1; transform: none; }
 }
 
-/* Telefon / wąskie okno: menu w jednej kolumnie, podgląd mniejszy albo ukryty */
+/* Telefon / wąskie okno: menu w jednej kolumnie, ilustracja jako baner na górze */
 @media (max-width: 760px) {
   .menu-layout { grid-template-columns: 1fr; gap: 20px; max-width: 460px; }
-  .preview { order: -1; width: min(180px, 45vw); margin: 0 auto; }
-  .preview figcaption { display: none; }
+  .hero { order: -1; width: min(100%, 320px); margin: 0 auto; }
+  .hero-frame { transform: rotate(0.8deg); }
+  .hero figcaption { display: none; }
   h1 { text-align: left; }
 }
 @media (max-width: 760px) and (max-height: 760px) {
-  .preview { display: none; }
+  .hero { width: min(260px, 70vw); }
 }
 
 @media (max-width: 560px) {

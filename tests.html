@@ -23,6 +23,7 @@
   <script src="js/game.js"></script>
   <script src="js/guest.js"></script>
   <script src="js/input.js"></script>
+  <script src="js/hero.js"></script>
   <script>
     (function () {
       'use strict';
@@ -386,6 +387,31 @@
         assertEqual(moves.join(','), 'up', 'ruch poza polem tekstowym');
         assertEqual(keys.join(','), 'm', 'skrót poza polem tekstowym');
         input.remove();
+      });
+
+      // ---- Ilustracja w menu ----
+
+      function dist(a, b) { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
+
+      test('Ilustracja: ścieżka nici leży w obrazku i prowadzi od kłębka do bramy', function () {
+        var img = HeroFX.IMAGE;
+        HeroFX.THREAD.forEach(function (p, i) {
+          assert(p.x >= 0 && p.x <= img.w && p.y >= 0 && p.y <= img.h, 'punkt ' + i + ' poza obrazkiem');
+        });
+        assert(dist(HeroFX.pointAt(0), HeroFX.BALL) < 90, 'nić zaczyna się przy kłębku');
+        assert(dist(HeroFX.pointAt(1), HeroFX.GATE) < 40, 'nić kończy się w bramie');
+      });
+
+      test('Ilustracja: błysk przesuwa się po nici równym krokiem', function () {
+        // Równe tempo = w ułamku drogi d/total błysk jest dokładnie w punkcie nici leżącym po drodze d.
+        var pts = HeroFX.THREAD, along = [0];
+        for (var i = 1; i < pts.length; i++) along.push(along[i - 1] + dist(pts[i - 1], pts[i]));
+        var total = along[along.length - 1];
+        for (var j = 0; j < pts.length; j++) {
+          assert(dist(HeroFX.pointAt(along[j] / total), pts[j]) < 0.5, 'błysk mija punkt ' + j + ' nici');
+        }
+        assertEqual(HeroFX.pointAt(-1).x, HeroFX.pointAt(0).x, 'k < 0 jak początek');
+        assertEqual(HeroFX.pointAt(2).x, HeroFX.pointAt(1).x, 'k > 1 jak koniec');
       });
 
       // ---- Uruchomienie ----
