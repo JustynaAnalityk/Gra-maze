@@ -50,7 +50,6 @@
   };
 
   var renderer = new Renderer(el.canvas);
-  var preview = new MenuPreview($('preview'));
   var game = null;
   var difficulty = 'easy';
   var rafId = null;
@@ -115,7 +114,9 @@
 
   function showScreen(name) {
     SCREENS.forEach(function (s) { el[s].hidden = s !== name; });
-    if (name === 'menu') preview.start(); else preview.stop();
+    document.body.setAttribute('data-screen', name); // CSS: rozmyty obrazek pod kontem i profilem
+    // Animacje ilustracji tylko w menu – w grze nic nie rysują w tle.
+    if (name === 'menu') HeroFX.start(); else HeroFX.stop();
   }
 
   function showMenu() {
