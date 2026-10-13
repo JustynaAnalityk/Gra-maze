@@ -13,7 +13,7 @@ Jak wypełniać:
 
 **0.1** Opisz swoimi słowami, jak ma wyglądać i działać gra. Co widzi gracz po uruchomieniu, co robi i jak kończy się rozgrywka?
 
-**Odpowiedź:** Po otwarciu `index.html` widać menu z tytułem „Nić Ariadny”, krótką instrukcją i trzema przyciskami trudności: Łatwy, Średni, Trudny. Po wyborze pojawia się losowo wygenerowany labirynt widziany z góry. Gracz (kółko) startuje w lewym górnym rogu, a meta (gwiazdka) jest w prawym dolnym. Gracz porusza się strzałkami, WASD albo przesuwając palcem po ekranie. Za nim zostaje ślad przebytej drogi. Na górze widać czas i liczbę ruchów. Gracz może 3 razy wziąć podpowiedź albo się poddać i zobaczyć całą drogę. Po dojściu do mety pojawia się ekran wygranej z czasem, liczbą ruchów i najlepszym wynikiem oraz przyciskami „Następny labirynt” i „Menu”.
+**Odpowiedź:** Po otwarciu `index.html` widać menu z tytułem „Nić Ariadny”, krótką instrukcją i trzema przyciskami trudności: Łatwy, Średni, Trudny. Po wyborze pojawia się losowo wygenerowany labirynt widziany z góry. Gracz (kółko) startuje w lewym górnym rogu, a meta (złota brama) jest w prawym dolnym. Gracz porusza się strzałkami, WASD albo przesuwając palcem po ekranie. Za nim rozwija się czerwona nić z kłębka – ślad przebytej drogi. Na górze widać czas i liczbę ruchów. Gracz może 3 razy wziąć podpowiedź albo się poddać i zobaczyć całą drogę. Po dojściu do mety pojawia się ekran wygranej z czasem, liczbą ruchów i najlepszym wynikiem oraz przyciskami „Następny labirynt” i „Menu”.
 
 ---
 
@@ -87,7 +87,7 @@ Jak wypełniać:
 
 **3.4** Jak wygląda postać gracza?
 
-**Odpowiedź:** Kolorowe kółko, które płynnie (ok. 80 ms) przesuwa się na nowe pole. Meta to złota gwiazdka.
+**Odpowiedź:** Kolorowe kółko, które płynnie (ok. 80 ms) przesuwa się na nowe pole. Meta to złota brama – wyjście z labiryntu. Start oznacza kłębek czerwonej nici.
 
 **3.5** Czy za graczem ma zostawać ślad przebytej drogi?
 - [x] tak (półprzezroczysta linia)
