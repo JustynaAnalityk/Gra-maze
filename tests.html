@@ -21,6 +21,9 @@
 
   <script src="js/maze.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/guest.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/hero.js"></script>
   <script>
     (function () {
       'use strict';
@@ -127,7 +130,7 @@
       // ---- Gra ----
 
       test('Gracz nie przechodzi przez ściany, a uderzenie nie liczy się jako ruch', function () {
-        var game = new Game('medium', Maze.mulberry32(42));
+        var game = new Game('medium', 42);
         // Z lewego górnego rogu nie da się wyjść w górę ani w lewo.
         assertEqual(game.move('up', 0), 'blocked');
         assertEqual(game.move('left', 0), 'blocked');
@@ -141,7 +144,7 @@
       });
 
       test('Każdy krok w grze zgadza się z mapą ścian', function () {
-        var game = new Game('easy', Maze.mulberry32(7));
+        var game = new Game('easy', 7);
         var rng = Maze.mulberry32(99);
         for (var i = 0; i < 500 && game.status === 'playing'; i++) {
           var dir = Maze.DIR_NAMES[Math.floor(rng() * 4)];
@@ -156,7 +159,7 @@
 
       test('Wygrana wykrywa się na mecie, a potem ruchy są ignorowane', function () {
         ['easy', 'medium', 'hard'].forEach(function (diff) {
-          var game = new Game(diff, Maze.mulberry32(123));
+          var game = new Game(diff, 123);
           var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal));
           var t = 1000;
           for (var i = 0; i < dirs.length; i++) {
@@ -171,7 +174,7 @@
       });
 
       test('Ślad zapisuje przebytą drogę', function () {
-        var game = new Game('easy', Maze.mulberry32(5));
+        var game = new Game('easy', 5);
         var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal)).slice(0, 4);
         dirs.forEach(function (d, i) { game.move(d, i); });
         assertEqual(game.trail.length, 5);
@@ -180,7 +183,7 @@
       });
 
       test('Podpowiedź: 5 pól właściwej drogi, 2 sekundy, maksymalnie 3 razy', function () {
-        var game = new Game('hard', Maze.mulberry32(11));
+        var game = new Game('hard', 11);
         var path = Maze.solve(game.maze, game.start, game.goal);
         assert(game.useHint(0), 'pierwsza podpowiedź');
         assertEqual(game.hintCells.length, 5);
@@ -195,7 +198,7 @@
       });
 
       test('Podpowiedź przy mecie jest krótsza niż 5 pól', function () {
-        var game = new Game('easy', Maze.mulberry32(3));
+        var game = new Game('easy', 3);
         var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal));
         for (var i = 0; i < dirs.length - 2; i++) game.move(dirs[i], i);
         game.useHint(0);
@@ -203,7 +206,7 @@
       });
 
       test('Poddanie się pokazuje całą drogę i kończy grę', function () {
-        var game = new Game('medium', Maze.mulberry32(8));
+        var game = new Game('medium', 8);
         game.move(Maze.canMove(game.maze, 0, 0, 'right') ? 'right' : 'down', 0);
         assert(game.giveUp(500));
         assertEqual(game.status, 'gaveup');
@@ -218,6 +221,197 @@
         assertEqual(formatTime(0), '0:00.0');
         assertEqual(formatTime(9999), '0:09.9');
         assertEqual(formatTime(75300), '1:15.3');
+      });
+
+      // ---- Zapis i wznawianie ----
+
+      function mazeKey(maze) {
+        var s = '';
+        for (var i = 0; i < maze.cells.length; i++) s += maze.cells[i].toString(16);
+        return s;
+      }
+
+      test('Ten sam seed daje ten sam labirynt, a gra bez seeda losuje go sama', function () {
+        assertEqual(mazeKey(new Game('medium', 12345).maze), mazeKey(new Game('medium', 12345).maze), 'labirynt z tego samego seeda');
+        var g = new Game('easy');
+        assert(typeof g.seed === 'number' && g.seed >= 0 && g.seed <= 4294967295 && g.seed === Math.floor(g.seed), 'losowy seed uint32: ' + g.seed);
+        assertEqual(mazeKey(g.maze), mazeKey(new Game('easy', g.seed).maze), 'labirynt odtworzony z losowego seeda');
+      });
+
+      test('Ścieżka zapisuje tylko udane ruchy literami U D L R', function () {
+        var game = new Game('easy', 5);
+        var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal)).slice(0, 4);
+        game.move('up', 0);   // ściany obwodu – bez zapisu
+        game.move('left', 0);
+        dirs.forEach(function (d, i) { game.move(d, i); });
+        var expected = dirs.map(function (d) { return { up: 'U', down: 'D', left: 'L', right: 'R' }[d]; }).join('');
+        assertEqual(game.path, expected);
+        assertEqual(game.moves, game.path.length);
+      });
+
+      test('Wznowienie odtwarza labirynt, pozycję, nić, ruchy, czas i podpowiedzi', function () {
+        var game = new Game('medium', 777);
+        var dirs = directionsFor(Maze.solve(game.maze, game.start, game.goal)).slice(0, 12);
+        dirs.forEach(function (d, i) { game.move(d, 1000 + i * 100); });
+        game.useHint(2500);
+        var snap = game.snapshot(5000);
+        assertEqual(snap.elapsed_ms, 4000, 'czas w zapisie');
+        var restored = Game.restore(snap, 20000);
+        assertEqual(mazeKey(restored.maze), mazeKey(game.maze), 'labirynt');
+        assertEqual(restored.player.x + ',' + restored.player.y, game.player.x + ',' + game.player.y, 'pozycja');
+        assertEqual(JSON.stringify(restored.trail), JSON.stringify(game.trail), 'nić');
+        assertEqual(restored.moves, 12, 'ruchy');
+        assertEqual(restored.path, game.path, 'ścieżka');
+        assertEqual(restored.elapsed(20000), 4000, 'czas po wznowieniu');
+        assertEqual(restored.elapsed(21500), 5500, 'zegar biegnie dalej');
+        assertEqual(restored.hintsUsed, 1, 'użyte podpowiedzi');
+        assertEqual(restored.hintsLeft, 2, 'pozostałe podpowiedzi');
+        assertEqual(restored.status, 'playing');
+      });
+
+      test('Wznowienie gry bez ruchów: zegar startuje dopiero od pierwszego ruchu', function () {
+        var restored = Game.restore({ difficulty: 'easy', seed: 9, path: '', elapsed_ms: 0, hints_used: 0 }, 5000);
+        assertEqual(restored.startTime, null);
+        assertEqual(restored.elapsed(9000), 0);
+      });
+
+      test('Nie da się wznowić gry, której ścieżka kończy się na mecie albo nie pasuje do labiryntu', function () {
+        var game = new Game('easy', 31);
+        directionsFor(Maze.solve(game.maze, game.start, game.goal)).forEach(function (d, i) { game.move(d, i); });
+        assertEqual(game.status, 'won');
+        [game.path, 'UUU', 'X'].forEach(function (path) {
+          var threw = false;
+          try { Game.restore({ difficulty: 'easy', seed: 31, path: path, elapsed_ms: 1, hints_used: 0 }, 0); } catch (e) { threw = true; }
+          assert(threw, 'ścieżka „' + path.slice(0, 8) + '” nie powinna dać się wznowić');
+        });
+      });
+
+      test('Zapis zakończonej gry ma status i datę końca', function () {
+        var game = new Game('easy', 4);
+        game.move(Maze.canMove(game.maze, 0, 0, 'right') ? 'right' : 'down', 100);
+        game.giveUp(900);
+        var snap = game.snapshot(900);
+        assertEqual(snap.status, 'gaveup');
+        assert(snap.finished_at && snap.started_at <= snap.finished_at, 'daty');
+        assertEqual(snap.moves, 1);
+        assertEqual(new Game('easy', 4).snapshot().finished_at, null, 'gra w toku nie ma daty końca');
+      });
+
+      // ---- Wyniki gościa ----
+
+      function memoryStorage() {
+        var data = {};
+        return {
+          getItem: function (k) { return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+          setItem: function (k, v) { data[k] = String(v); }
+        };
+      }
+      function result(i, extra) {
+        var r = { difficulty: 'easy', seed: i, path: 'R', moves: 1, elapsed_ms: 1000 + i, hints_used: 0, status: 'won',
+                  started_at: '2026-10-13T10:00:00.000Z', finished_at: '2026-10-13T10:01:00.000Z' };
+        for (var k in extra) r[k] = extra[k];
+        return r;
+      }
+
+      test('Wyniki gościa: dodawanie, licznik i rekord tylko z wygranych', function () {
+        var store = memoryStorage();
+        var gr = GuestResults.create(function () { return store; });
+        gr.add(result(1, { elapsed_ms: 9000 }));
+        gr.add(result(2, { elapsed_ms: 4000, difficulty: 'medium' }));
+        gr.add(result(3, { elapsed_ms: 2000, status: 'gaveup' }));
+        gr.add(result(4, { elapsed_ms: 7000 }));
+        assertEqual(gr.count(), 4);
+        assertEqual(gr.best('easy'), 7000, 'rekord łatwego bez poddanej gry');
+        assertEqual(gr.best('medium'), 4000);
+        assertEqual(gr.best('hard'), null);
+        var again = GuestResults.create(function () { return store; });
+        assertEqual(again.count(), 4, 'wyniki przetrwały odświeżenie strony');
+      });
+
+      test('Wyniki gościa: najwyżej 20, najstarsze wypadają', function () {
+        var store = memoryStorage();
+        var gr = GuestResults.create(function () { return store; });
+        for (var i = 1; i <= 23; i++) gr.add(result(i));
+        var list = gr.list();
+        assertEqual(list.length, 20);
+        assertEqual(list[0].seed, 4, 'najstarszy zachowany');
+        assertEqual(list[19].seed, 23, 'najnowszy');
+      });
+
+      test('Wyniki gościa: usuwanie po zapisie w bazie', function () {
+        var store = memoryStorage();
+        var gr = GuestResults.create(function () { return store; });
+        gr.add(result(1)); gr.add(result(2)); gr.add(result(3));
+        var ids = gr.list().map(function (r) { return r.id; });
+        assert(ids[0] && ids[0] !== ids[1] && ids[1] !== ids[2], 'każdy wynik ma własne id');
+        gr.remove([ids[0], ids[2]]);
+        assertEqual(gr.count(), 1);
+        assertEqual(gr.list()[0].seed, 2);
+      });
+
+      test('Wyniki gościa działają bez localStorage (tryb prywatny, blokada)', function () {
+        var broken = { getItem: function () { throw new Error('blocked'); }, setItem: function () { throw new Error('blocked'); } };
+        var gr = GuestResults.create(function () { return broken; });
+        gr.add(result(1, { elapsed_ms: 3000 }));
+        assertEqual(gr.count(), 1, 'wynik trzymany w pamięci');
+        assertEqual(gr.best('easy'), 3000);
+        var none = GuestResults.create(function () { throw new Error('no storage'); });
+        none.add(result(2));
+        assertEqual(none.count(), 1);
+      });
+
+      test('Wyniki gościa: uszkodzone dane w localStorage nie psują gry', function () {
+        var store = memoryStorage();
+        store.setItem('nic.guest-results', '{to nie jest json');
+        var gr = GuestResults.create(function () { return store; });
+        assertEqual(gr.count(), 0);
+        gr.add(result(1));
+        assertEqual(gr.count(), 1);
+      });
+
+      // ---- Sterowanie ----
+
+      test('Pisanie w polach formularza nie porusza graczem ani nie wywołuje skrótów', function () {
+        var moves = [], keys = [];
+        Input.init({ onMove: function (d) { moves.push(d); }, onKey: function (e) { keys.push(e.key); } });
+        var input = document.createElement('input');
+        document.body.appendChild(input);
+        ['w', 'a', 's', 'd', 'm', 'h', 'r'].forEach(function (k) {
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: 'Key' + k.toUpperCase(), bubbles: true }));
+        });
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', bubbles: true }));
+        assertEqual(moves.length + keys.length, 0, 'zdarzenia z pola tekstowego');
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW', bubbles: true }));
+        document.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', code: 'KeyW', bubbles: true }));
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', code: 'KeyM', bubbles: true }));
+        assertEqual(moves.join(','), 'up', 'ruch poza polem tekstowym');
+        assertEqual(keys.join(','), 'm', 'skrót poza polem tekstowym');
+        input.remove();
+      });
+
+      // ---- Ilustracja w menu ----
+
+      function dist(a, b) { return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)); }
+
+      test('Ilustracja: ścieżka nici leży w obrazku i prowadzi od kłębka do bramy', function () {
+        var img = HeroFX.IMAGE;
+        HeroFX.THREAD.forEach(function (p, i) {
+          assert(p.x >= 0 && p.x <= img.w && p.y >= 0 && p.y <= img.h, 'punkt ' + i + ' poza obrazkiem');
+        });
+        assert(dist(HeroFX.pointAt(0), HeroFX.BALL) < 90, 'nić zaczyna się przy kłębku');
+        assert(dist(HeroFX.pointAt(1), HeroFX.GATE) < 40, 'nić kończy się w bramie');
+      });
+
+      test('Ilustracja: błysk przesuwa się po nici równym krokiem', function () {
+        // Równe tempo = w ułamku drogi d/total błysk jest dokładnie w punkcie nici leżącym po drodze d.
+        var pts = HeroFX.THREAD, along = [0];
+        for (var i = 1; i < pts.length; i++) along.push(along[i - 1] + dist(pts[i - 1], pts[i]));
+        var total = along[along.length - 1];
+        for (var j = 0; j < pts.length; j++) {
+          assert(dist(HeroFX.pointAt(along[j] / total), pts[j]) < 0.5, 'błysk mija punkt ' + j + ' nici');
+        }
+        assertEqual(HeroFX.pointAt(-1).x, HeroFX.pointAt(0).x, 'k < 0 jak początek');
+        assertEqual(HeroFX.pointAt(2).x, HeroFX.pointAt(1).x, 'k > 1 jak koniec');
       });
 
       // ---- Uruchomienie ----

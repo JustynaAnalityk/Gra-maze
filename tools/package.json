@@ -1,0 +1,15 @@
+{
+  "name": "nic-ariadny-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "unit": "node unit-test.mjs",
+    "sql": "node sql-test.mjs",
+    "live": "node live-test.mjs",
+    "e2e": "node e2e.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.2.17",
+    "playwright-core": "1.48.2"
+  }
+}

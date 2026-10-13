@@ -1,4 +1,6 @@
 // Stan jednej rozgrywki: pozycja gracza, ślad, ruchy, czas, podpowiedzi. Bez DOM.
+// Labirynt powstaje z ziarna (seed), a udane ruchy zapisujemy literami w `path`,
+// więc z pary seed + path da się odtworzyć grę (wznawianie).
 (function (global) {
   'use strict';
 
@@ -12,24 +14,41 @@
   var HINT_LENGTH = 5;
   var HINT_DURATION = 2000;
 
+  var DIR_LETTERS = { up: 'U', down: 'D', left: 'L', right: 'R' };
+  var LETTER_DIRS = { U: 'up', D: 'down', L: 'left', R: 'right' };
+
   function now() {
     return global.performance ? global.performance.now() : Date.now();
   }
 
-  function Game(difficulty, rng) {
+  // Losowa liczba uint32 – ziarno nowego labiryntu.
+  function randomSeed() {
+    if (global.crypto && global.crypto.getRandomValues) {
+      var a = new Uint32Array(1);
+      global.crypto.getRandomValues(a);
+      return a[0];
+    }
+    return Math.floor(Math.random() * 4294967296);
+  }
+
+  function Game(difficulty, seed) {
     var cfg = DIFFICULTIES[difficulty];
     if (!cfg) throw new Error('Nieznany poziom trudności: ' + difficulty);
 
     this.difficulty = difficulty;
     this.size = cfg.size;
-    this.maze = Maze.generate(cfg.size, cfg.size, rng);
+    this.seed = seed === undefined || seed === null ? randomSeed() : seed >>> 0;
+    this.maze = Maze.generate(cfg.size, cfg.size, Maze.mulberry32(this.seed));
     this.start = { x: 0, y: 0 };
     this.goal = { x: cfg.size - 1, y: cfg.size - 1 };
     this.player = { x: 0, y: 0 };
     this.trail = [{ x: 0, y: 0 }];
+    this.path = '';
     this.moves = 0;
     this.startTime = null;
     this.endTime = null;
+    this.startedAt = new Date().toISOString();
+    this.finishedAt = null;
     this.hintsLeft = HINTS_PER_MAZE;
     this.hintsUsed = 0;
     this.hintCells = [];
@@ -51,11 +70,13 @@
     p.x += d.dx;
     p.y += d.dy;
     this.moves++;
+    this.path += DIR_LETTERS[dir];
     this.trail.push({ x: p.x, y: p.y });
 
     if (p.x === this.goal.x && p.y === this.goal.y) {
       this.status = 'won';
       this.endTime = t;
+      this.finishedAt = new Date().toISOString();
       this.hintCells = [];
       return 'won';
     }
@@ -85,6 +106,7 @@
     this.solution = Maze.solve(this.maze, this.start, this.goal);
     this.status = 'gaveup';
     this.endTime = this.startTime === null ? null : t;
+    this.finishedAt = new Date().toISOString();
     this.hintCells = [];
     return true;
   };
@@ -94,6 +116,39 @@
     if (this.startTime === null) return 0;
     var end = this.endTime !== null ? this.endTime : (t === undefined ? now() : t);
     return Math.max(0, end - this.startTime);
+  };
+
+  // Stan gry do zapisu w bazie lub w wynikach gościa (nazwy pól jak w tabeli games).
+  Game.prototype.snapshot = function (t) {
+    return {
+      difficulty: this.difficulty,
+      seed: this.seed,
+      path: this.path,
+      moves: this.moves,
+      elapsed_ms: Math.round(this.elapsed(t)),
+      hints_used: this.hintsUsed,
+      status: this.status,
+      started_at: this.startedAt,
+      finished_at: this.finishedAt
+    };
+  };
+
+  // Odtwarza grę w toku: ten sam labirynt z ziarna, ruchy ze ścieżki, czas i podpowiedzi.
+  Game.restore = function (saved, t) {
+    t = t === undefined ? now() : t;
+    var game = new Game(saved.difficulty, saved.seed);
+    for (var i = 0; i < saved.path.length; i++) {
+      var dir = LETTER_DIRS[saved.path.charAt(i)];
+      if (!dir || game.move(dir, t) !== 'moved') {
+        throw new Error('Zapisana ścieżka nie pasuje do labiryntu (krok ' + (i + 1) + ')');
+      }
+    }
+    var elapsed = saved.elapsed_ms || 0;
+    game.startTime = game.moves > 0 || elapsed > 0 ? t - elapsed : null;
+    game.hintsUsed = saved.hints_used || 0;
+    game.hintsLeft = Math.max(0, HINTS_PER_MAZE - game.hintsUsed);
+    if (saved.started_at) game.startedAt = saved.started_at;
+    return game;
   };
 
   function formatTime(ms) {
