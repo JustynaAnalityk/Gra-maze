@@ -73,9 +73,9 @@ Polityki `select`, `insert` i `update` dodatkowo wymagają `coalesce((select aut
 ### Funkcja `public.import_guest_games(items jsonb) returns integer`
 Zapisuje wyniki gościa na koncie zalogowanego gracza i zwraca liczbę zapisanych gier. Zwykła droga przez `insert` nie wystarcza, bo wyzwalacz zawsze zaczyna nową grę jako `playing` i porzuca grę w toku.
 - `security definer`, dostępna tylko dla `authenticated`, nie dla kont anonimowych. `player_id = auth.uid()`.
-- Przyjmuje najwyżej 20 pozycji. Każda musi spełniać wszystkie reguły tabeli (poziom, ziarno, litery ścieżki, `moves = długość path`, podpowiedzi 0–3). Status musi być `won` albo `gaveup`, a daty muszą spełniać `started_at ≤ finished_at ≤ now()` i nie mogą być starsze niż 30 dni.
+- Przyjmuje najwyżej 20 pozycji. Każda musi spełniać wszystkie reguły tabeli (poziom, ziarno, litery ścieżki, `moves = długość path`, podpowiedzi 0–3). Status musi być `won` albo `gaveup`, a daty muszą spełniać `started_at ≤ finished_at ≤ now() + 5 min` (daty przycinane do teraz) i nie mogą być starsze niż 30 dni.
 - Wstawia gry od razu jako zakończone, z ich własnymi datami. Wyzwalacz `games_before_insert` dostaje wyjątek: gdy ustawiona jest flaga transakcji `app.importing_guest_games`, którą ustawia tylko ta funkcja, wyzwalacz nie zmienia statusu ani dat i **nie porzuca** bieżącej gry w toku.
-- Nie przyjmuje duplikatów: ta sama gra (`seed` + `path` + `finished_at`) wysłana drugi raz jest pomijana, np. gdy odpowiedź nie dotarła i klient ponawia zapis.
+- Nie przyjmuje duplikatów: ta sama gra (`seed` + `path` + `status`) wysłana drugi raz jest pomijana, np. gdy odpowiedź nie dotarła i klient ponawia zapis.
 
 ### Widok `public.my_stats` (`security_invoker`)
 Jeden wiersz z liczbą gier: rozegranych (bez `playing`), wygranych, poddanych i porzuconych, oraz łączny czas gry (`sum(elapsed_ms)`).
