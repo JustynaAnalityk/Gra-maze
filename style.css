@@ -157,6 +157,8 @@ kbd {
 .menu-card > :nth-child(4) { animation-delay: 0.15s; }
 .menu-card > :nth-child(5) { animation-delay: 0.2s; }
 .menu-card > :nth-child(6) { animation-delay: 0.25s; }
+.menu-card > :nth-child(7) { animation-delay: 0.3s; }
+.menu-card > :nth-child(8) { animation-delay: 0.35s; }
 
 .kicker {
   display: flex;
@@ -637,6 +639,47 @@ label.check input { width: 1.1em; height: 1.1em; accent-color: var(--thread); }
 .form-ok { margin: 0; font-size: 0.88rem; font-weight: 600; }
 .form-error { color: var(--thread); }
 .form-ok { color: var(--trail); }
+
+.account-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  margin: 0 0 1.4rem;
+  font-size: 0.85rem;
+}
+.account-status { font-weight: 600; color: var(--muted); }
+
+.resume {
+  width: 100%;
+  justify-content: flex-start;
+  margin: 0 0 10px;
+  padding: 0.85rem 1rem;
+  border-left: 4px solid var(--thread);
+  font-weight: 700;
+  text-align: left;
+}
+
+.save-state { font-size: 0.75rem; font-weight: 700; color: var(--thread); }
+.guest-note { margin: 0 0 1rem; font-size: 0.9rem; color: var(--muted); }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 10;
+  width: max-content;
+  max-width: min(92vw, 440px);
+  margin: 0;
+  padding: 0.7em 1.1em;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  box-shadow: 0 12px 30px -10px rgba(var(--shadow), 0.5);
+  animation: fade-in 0.25s ease-out;
+}
 
 @keyframes fade-in {
   from { opacity: 0; }

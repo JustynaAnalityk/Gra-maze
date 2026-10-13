@@ -27,6 +27,12 @@
     <section id="menu" class="screen menu">
       <div class="menu-layout">
         <div class="menu-card">
+          <div class="account-bar">
+            <span id="account-status" class="account-status">Grasz jako gość</span>
+            <button id="btn-login" type="button" class="link-btn">Zaloguj się / Załóż konto</button>
+            <button id="btn-profile" type="button" class="link-btn" hidden>Mój profil</button>
+            <button id="btn-logout" type="button" class="link-btn" hidden>Wyloguj</button>
+          </div>
           <p class="kicker"><span>Zeszyt zagadek</span><span class="badge-18" title="Gra dla osób pełnoletnich">18+</span></p>
           <h1>Nić <em>Ariadny</em></h1>
           <div class="meander" aria-hidden="true"></div>
@@ -36,6 +42,7 @@
             na telefonie przesuwaj palcem po planszy.
             <kbd>H</kbd> podpowiedź, <kbd>R</kbd> nowy labirynt, <kbd>M</kbd> dźwięk.
           </p>
+          <button id="btn-resume" type="button" class="resume" hidden></button>
           <div class="levels">
             <button class="level" data-difficulty="easy" style="--grid: 10">
               <span class="level-no">01</span>
@@ -59,7 +66,7 @@
               <span class="level-art" aria-hidden="true"></span>
             </button>
           </div>
-          <p class="note">Gra przeznaczona wyłącznie dla osób pełnoletnich.</p>
+          <p class="note">Gra przeznaczona wyłącznie dla osób pełnoletnich. Załóż konto, aby zapisywać wyniki i wznawiać gry na każdym urządzeniu.</p>
         </div>
 
         <!-- Podgląd: labirynt, który sam się rozwiązuje -->
@@ -77,6 +84,7 @@
           <span id="hud-level" class="hud-level"></span>
           <span class="stat"><span class="stat-label">Czas</span> <b id="hud-time">0:00.0</b></span>
           <span class="stat"><span class="stat-label">Ruchy</span> <b id="hud-moves">0</b></span>
+          <span id="save-state" class="save-state" title="Postęp zapisze się, gdy wróci połączenie" hidden>niezapisane</span>
         </div>
         <div class="actions">
           <button id="btn-hint" title="Podpowiedź (H)"><svg class="ic"><use href="#i-hint"/></svg><span class="lbl">Podpowiedź</span> <span class="count" id="hint-count">3</span></button>
@@ -89,7 +97,8 @@
 
       <!-- Pasek po poddaniu się: w układzie strony, żeby nie zasłaniał rozwiązania. -->
       <div id="endbar" class="endbar" hidden>
-        <p><b>Oto droga do mety.</b> Wynik nie został zapisany.</p>
+        <p><b>Oto droga do mety.</b></p>
+        <button id="end-login" type="button" class="link-btn" hidden>Zaloguj się, aby zapisać wynik</button>
         <div class="panel-actions">
           <button id="end-next" class="primary">Następny labirynt</button>
           <button id="end-menu">Menu</button>
@@ -110,6 +119,8 @@
             <div><dt>Ruchy</dt><dd id="ov-moves"></dd></div>
             <div><dt>Najlepszy czas</dt><dd id="ov-best"></dd></div>
           </dl>
+          <p id="ov-guest" class="guest-note" hidden>Ten wynik nie jest jeszcze zapisany.
+            <button id="ov-login" type="button" class="link-btn">Zaloguj się, aby go zapisać</button></p>
           <div class="panel-actions">
             <button id="ov-next" class="primary">Następny labirynt</button>
             <button id="ov-menu">Menu</button>
@@ -177,16 +188,67 @@
         </form>
       </div>
     </section>
+
+    <!-- Mój profil -->
+    <section id="profile" class="screen profile" hidden>
+      <div class="profile-card">
+        <button id="profile-back" type="button" class="link-btn auth-close">← Menu</button>
+        <p class="kicker"><span>Mój profil</span></p>
+        <h2 id="profile-name"></h2>
+        <p class="profile-meta"><span id="profile-email"></span> · konto od <span id="profile-since"></span></p>
+        <p id="profile-error" class="form-error" role="alert" hidden></p>
+
+        <div class="stats-grid">
+          <div><b id="st-played">–</b><span>rozegrane</span></div>
+          <div><b id="st-won">–</b><span>wygrane</span></div>
+          <div><b id="st-gaveup">–</b><span>poddane</span></div>
+          <div><b id="st-time">–</b><span>łączny czas</span></div>
+        </div>
+
+        <h3>Rekordy</h3>
+        <table class="records">
+          <thead><tr><th>Poziom</th><th>Czas</th><th>Ruchy</th><th>Wygrane</th></tr></thead>
+          <tbody id="profile-records"></tbody>
+        </table>
+
+        <h3>Ostatnie gry</h3>
+        <ol id="profile-history" class="history"></ol>
+
+        <h3>Ustawienia</h3>
+        <label class="check"><input id="profile-muted" type="checkbox"> Wycisz dźwięk</label>
+        <form id="form-changepass" class="auth-form changepass" novalidate>
+          <label>Nowe hasło
+            <input id="cp-password" type="password" autocomplete="new-password" minlength="8" required></label>
+          <label>Powtórz hasło
+            <input id="cp-password2" type="password" autocomplete="new-password" required></label>
+          <p id="cp-error" class="form-error" role="alert" hidden></p>
+          <p id="cp-ok" class="form-ok" role="status" hidden>Hasło zmienione.</p>
+          <button type="submit">Zmień hasło</button>
+        </form>
+        <div class="profile-actions">
+          <button id="profile-logout" type="button">Wyloguj</button>
+        </div>
+      </div>
+    </section>
+
+    <p id="toast" class="toast" role="status" hidden></p>
   </main>
 
+  <!-- Supabase (konto i zapis wyników). Bez internetu gra działa jako gość. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
   <!-- Zwykłe skrypty (bez modułów ES), żeby gra działała po otwarciu pliku dwuklikiem. -->
+  <script src="js/supabase-config.js"></script>
   <script src="js/maze.js"></script>
   <script src="js/game.js"></script>
   <script src="js/storage.js"></script>
+  <script src="js/guest.js"></script>
+  <script src="js/api.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/render.js"></script>
   <script src="js/preview.js"></script>
   <script src="js/input.js"></script>
+  <script src="js/auth-ui.js"></script>
+  <script src="js/profile.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>
